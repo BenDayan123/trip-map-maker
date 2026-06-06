@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "python-expert": {
+      "source": "Shubhamsaboo/awesome-llm-apps",
+      "sourceType": "github",
+      "skillPath": "awesome_agent_skills/python-expert/SKILL.md",
+      "computedHash": "63800ddcf406ccfb4d7dec69b1b7026de6ad465512b95ffdbe955e4e5728483f"
+    }
+  }
+}

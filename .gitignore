@@ -1,0 +1,11 @@
+# Secrets
+.env
+credentials.json
+token.json
+
+# Python
+__pycache__/
+*.pyc
+
+# Output
+output/
