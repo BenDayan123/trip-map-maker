@@ -37,6 +37,21 @@ docker build -t trip-map-maker .
 docker run -p 8501:8501 -e GOOGLE_API_KEY=... -e GEO_API_KEY=... trip-map-maker
 ```
 
+## Usage gauges (optional)
+
+The web app can show two circular gauges — Gemini usage **today** and Geocoding
+usage **this month** — read live from Google Cloud Monitoring. They're hidden
+until configured. To enable:
+
+1. In the Cloud project behind your API keys, enable the **Cloud Monitoring API**.
+2. Create a **service account** with role `roles/monitoring.viewer`; download its JSON key.
+3. Find your **project ID** (Google AI Studio shows the project tied to the Gemini key).
+4. Set secrets: `GCP_PROJECT_ID`, `GCP_SA_JSON` (the JSON as a string),
+   `GEMINI_DAILY_LIMIT`, `GEO_MONTHLY_LIMIT` (your real quota numbers).
+
+Notes: Monitoring data lags a few minutes; counts are total API requests
+(≈ quota consumption); windows reset on Pacific time to match Google's quotas.
+
 ## Importing into Google My Maps
 Automatic upload isn't possible (Google removed the My Maps import API), so import
 each KML manually: [My Maps](https://www.google.com/mymaps) → Create a new map →

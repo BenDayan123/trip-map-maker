@@ -9,6 +9,11 @@ MAX_LAYERS_PER_FILE = 10
 # Geocoding API — converts a place name/address to coordinates.
 GEOCODE_URL = "https://maps.googleapis.com/maps/api/geocode/json"
 
+# Free-tier quota limits for the usage gauges (override via secrets/env to match
+# your actual Google quotas). Gemini resets daily, Geocoding monthly.
+GEMINI_DAILY_LIMIT = 50
+GEO_MONTHLY_LIMIT = 10000
+
 # Per-day pin colors (Material 700 shades; white number stays readable on each).
 DAY_COLORS = [
     "0288D1", "D32F2F", "388E3C", "7B1FA2", "E65100", "00796B",

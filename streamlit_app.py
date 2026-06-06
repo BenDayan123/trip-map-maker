@@ -9,15 +9,17 @@ code works hosted and locally. Admins normally never see or enter keys.
 """
 
 import io
+import json
 import os
 import tempfile
 import zipfile
 
 import streamlit as st
 
-from gmap_planner.config import MAX_LAYERS_PER_FILE
+from gmap_planner.config import GEMINI_DAILY_LIMIT, GEO_MONTHLY_LIMIT, MAX_LAYERS_PER_FILE
 from gmap_planner.errors import PipelineError
 from gmap_planner.service import run_pipeline
+from gmap_planner.usage import get_api_usage
 
 MAX_UPLOAD_MB = 15
 
@@ -34,12 +36,98 @@ def get_secret(name: str) -> str | None:
     return os.environ.get(name)
 
 
+def ring_svg(pct: float, center: str, sub: str, color: str) -> str:
+    """Dependency-free circular progress gauge as inline SVG."""
+    import math
+
+    r = 54
+    circ = 2 * math.pi * r
+    offset = circ * (1 - max(min(pct, 100), 0) / 100)
+    return f"""
+    <div style="text-align:center">
+      <svg width="140" height="140" viewBox="0 0 140 140">
+        <circle cx="70" cy="70" r="{r}" fill="none" stroke="#eceff1" stroke-width="12"/>
+        <circle cx="70" cy="70" r="{r}" fill="none" stroke="{color}" stroke-width="12"
+                stroke-linecap="round" stroke-dasharray="{circ:.1f}"
+                stroke-dashoffset="{offset:.1f}" transform="rotate(-90 70 70)"/>
+        <text x="70" y="72" text-anchor="middle" dominant-baseline="middle"
+              font-size="26" font-weight="700" fill="#263238">{center}</text>
+      </svg>
+      <div style="color:#607d8b;font-size:0.85rem;margin-top:-6px">{sub}</div>
+    </div>
+    """
+
+
+def _gauge_color(pct: float) -> str:
+    if pct >= 90:
+        return "#D32F2F"
+    if pct >= 70:
+        return "#E65100"
+    return "#388E3C"
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _cached_usage(project_id, sa_json, gem_limit, geo_limit):
+    if not project_id or not sa_json:
+        return None
+    try:
+        sa_info = json.loads(sa_json)
+    except (TypeError, json.JSONDecodeError):
+        return None
+    return get_api_usage(
+        project_id=project_id,
+        sa_info=sa_info,
+        gemini_daily_limit=int(gem_limit),
+        geo_monthly_limit=int(geo_limit),
+    )
+
+
+def render_usage_gauges() -> None:
+    usage = _cached_usage(
+        get_secret("GCP_PROJECT_ID"),
+        get_secret("GCP_SA_JSON"),
+        get_secret("GEMINI_DAILY_LIMIT") or GEMINI_DAILY_LIMIT,
+        get_secret("GEO_MONTHLY_LIMIT") or GEO_MONTHLY_LIMIT,
+    )
+    if usage is None:
+        st.caption("📊 API usage metrics not configured.")
+        with st.expander("Enable the usage gauges"):
+            st.markdown(
+                "Set these secrets (needs the Cloud Monitoring API enabled and a "
+                "service account with `roles/monitoring.viewer`):\n"
+                "- `GCP_PROJECT_ID` — the project behind your API keys\n"
+                "- `GCP_SA_JSON` — the service-account JSON (as a string)\n"
+                "- `GEMINI_DAILY_LIMIT`, `GEO_MONTHLY_LIMIT` — your quota numbers"
+            )
+        return
+
+    g, geo = usage["gemini"], usage["geocode"]
+    col_g, col_geo = st.columns(2)
+    with col_g:
+        st.markdown(
+            ring_svg(g["pct"], f"{g['pct']:.0f}%",
+                     f"Gemini · today<br>{g['used']:,} / {g['limit']:,}",
+                     _gauge_color(g["pct"])),
+            unsafe_allow_html=True,
+        )
+    with col_geo:
+        st.markdown(
+            ring_svg(geo["pct"], f"{geo['pct']:.0f}%",
+                     f"Geocoding · this month<br>{geo['used']:,} / {geo['limit']:,}",
+                     _gauge_color(geo["pct"])),
+            unsafe_allow_html=True,
+        )
+
+
 # --- Header ---------------------------------------------------------------
 st.title("🗺️ Trip Map Maker")
 st.caption(
     "Upload a travel itinerary (PDF or TXT) and get Google My Maps KML files — "
     "each day a colored layer with numbered pins."
 )
+
+# --- API usage gauges -----------------------------------------------------
+render_usage_gauges()
 
 # --- Sidebar options ------------------------------------------------------
 with st.sidebar:
@@ -52,7 +140,7 @@ with st.sidebar:
         help="Google My Maps allows at most 10 layers (days) per map.",
     )
     no_geocode = st.toggle(
-        "Skip geocoding (faster, rougher pins)",
+        "Skip geocoding (faster, less inaccurate pins)",
         value=False,
         help="Use Gemini's approximate coordinates instead of snapping each "
         "place to its exact Google Maps point.",
