@@ -69,7 +69,8 @@ geo_api_key = geo_key_override or get_secret("GEO_API_KEY")
 uploaded = st.file_uploader(
     "Drag & drop your itinerary here",
     type=["pdf", "txt"],
-    help="PDF or TXT, up to %d MB." % MAX_UPLOAD_MB,
+    accept_multiple_files=False,
+    help="One PDF or TXT file at a time, up to %d MB." % MAX_UPLOAD_MB,
 )
 
 generate = st.button("Generate map files", type="primary", disabled=uploaded is None)
@@ -160,20 +161,30 @@ if "result_files" in st.session_state:
     st.subheader("Download")
     if len(files) > 1:
         st.download_button(
-            "⬇️ Download all (.zip)",
+            f"⬇️  Download all {len(files)} files (.zip)",
             data=build_zip(files),
             file_name=f"{meta['trip_name']}.zip",
             mime="application/zip",
             type="primary",
+            use_container_width=True,
         )
-    for name, data in files:
-        st.download_button(
-            f"⬇️ {name}",
-            data=data,
-            file_name=name,
-            mime="application/vnd.google-earth.kml+xml",
-            key=f"dl_{name}",
-        )
+        st.caption("…or grab individual day-layers:")
+
+    for i, (name, data) in enumerate(files, start=1):
+        label = os.path.splitext(name)[0]
+        day_label = f"Days {label}" if "-" in label else f"Day {label}"
+        size_kb = len(data) / 1024
+        with st.container(border=True):
+            info, btn = st.columns([3, 1], vertical_alignment="center")
+            info.markdown(f"🗺️ **{day_label}**  \n`{name}` · {size_kb:.0f} KB")
+            btn.download_button(
+                "⬇️ Download",
+                data=data,
+                file_name=name,
+                mime="application/vnd.google-earth.kml+xml",
+                key=f"dl_{name}",
+                use_container_width=True,
+            )
 
     with st.expander("How to import into Google My Maps"):
         st.markdown(
