@@ -36,3 +36,4 @@ Current model: `gemini-3.1-flash-lite` (set via `GEMINI_MODEL` in `config.py`).
 - **Hebrew notes**: the prompt instructs Gemini to write `notes` in Hebrew.
 - **Per-trip output folder**: each run writes its KML files into `<output-dir>/<trip_name>/`, keeping multiple trips separated on disk.
 - **No automated My Maps upload**: Google removed KML→My Maps conversion from the Drive API (v2 and v3) and offers no My Maps create API, so maps must be imported manually in the My Maps UI from the generated KML.
+- **No local PDF pre-parsing (markitdown etc.)**: PDFs go straight to Gemini's Files API. Gemini reads native PDF text free of token charge, OCRs scanned pages, and handles Hebrew/RTL — all of which a pdfminer-based markdown step would charge for, weaken, or risk corrupting. Revisit only to support non-PDF Office formats (.docx/.xlsx), where markitdown would feed the inline-text path while PDFs stay on Gemini native.
