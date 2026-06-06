@@ -102,21 +102,18 @@ def render_usage_gauges() -> None:
         return
 
     g, geo = usage["gemini"], usage["geocode"]
-    col_g, col_geo = st.columns(2)
-    with col_g:
-        st.markdown(
-            ring_svg(g["pct"], f"{g['pct']:.0f}%",
-                     f"Gemini · today<br>{g['used']:,} / {g['limit']:,}",
-                     _gauge_color(g["pct"])),
-            unsafe_allow_html=True,
-        )
-    with col_geo:
-        st.markdown(
-            ring_svg(geo["pct"], f"{geo['pct']:.0f}%",
-                     f"Geocoding · this month<br>{geo['used']:,} / {geo['limit']:,}",
-                     _gauge_color(geo["pct"])),
-            unsafe_allow_html=True,
-        )
+    st.markdown(
+        ring_svg(g["pct"], f"{g['pct']:.0f}%",
+                 f"Gemini · today<br>{g['used']:,} / {g['limit']:,}",
+                 _gauge_color(g["pct"])),
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        ring_svg(geo["pct"], f"{geo['pct']:.0f}%",
+                 f"Geocoding · this month<br>{geo['used']:,} / {geo['limit']:,}",
+                 _gauge_color(geo["pct"])),
+        unsafe_allow_html=True,
+    )
 
 
 # --- Header ---------------------------------------------------------------
@@ -126,11 +123,11 @@ st.caption(
     "each day a colored layer with numbered pins."
 )
 
-# --- API usage gauges -----------------------------------------------------
-render_usage_gauges()
-
-# --- Sidebar options ------------------------------------------------------
+# --- Sidebar: usage gauges + options --------------------------------------
 with st.sidebar:
+    st.header("API usage")
+    render_usage_gauges()
+    st.divider()
     st.header("Options")
     layers_per_file = st.slider(
         "Days per KML file",
