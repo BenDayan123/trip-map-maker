@@ -2,12 +2,12 @@
 
 import json
 import os
-import sys
 
 from google import genai
 from google.genai import types
 
 from .config import GEMINI_MODEL
+from .errors import PipelineError
 from .prompt import GEMINI_EXTRACTION_PROMPT
 
 
@@ -34,17 +34,19 @@ def extract_itinerary(parts: list, client: genai.Client) -> dict:
         )
         data = json.loads(response.text)
     except json.JSONDecodeError as e:
-        print(f"Error: Gemini returned invalid JSON ({e}).")
-        print("Raw response:")
-        print(response.text if response else "<no response>")
-        sys.exit(1)
+        raw = response.text if response else "<no response>"
+        raise PipelineError(
+            f"Gemini returned invalid JSON ({e}). Raw response:\n{raw}"
+        ) from e
+    except PipelineError:
+        raise
     except Exception as e:
-        print(f"Error calling Gemini API: {e}")
-        sys.exit(1)
+        raise PipelineError(f"Error calling Gemini API: {e}") from e
 
     if "trip_name" not in data or "days" not in data:
-        print("Error: Gemini response is missing required fields ('trip_name', 'days').")
-        print("Raw response:", response.text)
-        sys.exit(1)
+        raise PipelineError(
+            "Gemini response is missing required fields ('trip_name', 'days').\n"
+            f"Raw response: {response.text}"
+        )
 
     return data
