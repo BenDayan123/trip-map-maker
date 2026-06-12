@@ -51,6 +51,37 @@ def _import_playwright():
     return sync_playwright
 
 
+# Hide the two signals Google uses to block sign-in ("This browser or app may not
+# be secure"): the bundled-Chromium fingerprint and the --enable-automation flag.
+_LAUNCH_ARGS = ["--disable-blink-features=AutomationControlled"]
+_IGNORE_ARGS = ["--enable-automation"]
+
+
+def _launch_persistent(pw, profile_dir: str, headless: bool):
+    """Open a persistent context as the *installed* Chrome with automation flags off.
+
+    Google refuses login inside Playwright's default bundled Chromium (it sees
+    --enable-automation). Using the real Chrome/Edge channel and dropping that flag
+    gets past the "browser may not be secure" block. Falls back to bundled Chromium
+    if neither browser is installed (login will likely stay blocked there).
+    """
+    common = dict(
+        user_data_dir=profile_dir,
+        headless=headless,
+        args=_LAUNCH_ARGS,
+        ignore_default_args=_IGNORE_ARGS,
+    )
+    for channel in ("chrome", "msedge", None):
+        try:
+            if channel:
+                return pw.chromium.launch_persistent_context(channel=channel, **common)
+            return pw.chromium.launch_persistent_context(**common)
+        except Exception:
+            continue
+    # Last resort: plain bundled Chromium with defaults.
+    return pw.chromium.launch_persistent_context(profile_dir, headless=headless)
+
+
 def _set_kml_on_any_frame(page, kml_path: str, timeout_ms: int = 30000) -> bool:
     """Find the (often hidden) <input type=file> across all frames and set the KML.
 
@@ -131,11 +162,7 @@ class MyMapsSession:
     def __enter__(self):
         sync_playwright = _import_playwright()
         self._pw = sync_playwright().start()
-        self._ctx = self._pw.chromium.launch_persistent_context(
-            self.profile_dir,
-            headless=self.headless,
-            args=["--disable-blink-features=AutomationControlled"],
-        )
+        self._ctx = _launch_persistent(self._pw, self.profile_dir, self.headless)
         return self
 
     def __exit__(self, *exc):
@@ -200,7 +227,7 @@ def login(profile_dir: str = PW_PROFILE_DIR, timeout_s: int = 300) -> None:
         "window. This is a one-time step; the session is saved.\n"
     )
     with sync_playwright() as pw:
-        ctx = pw.chromium.launch_persistent_context(profile_dir, headless=False)
+        ctx = _launch_persistent(pw, profile_dir, headless=False)
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
         page.goto(MYMAPS_HOME_URL, wait_until="load")
         deadline = time.time() + timeout_s
