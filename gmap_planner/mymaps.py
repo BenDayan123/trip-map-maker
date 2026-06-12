@@ -28,6 +28,8 @@ _MID_RE = re.compile(r"[?&]mid=([^&#]+)")
 
 # --- Centralized, tweak-here selectors (the bit Google breaks) -----------------
 SEL_CREATE_NEW = re.compile(r"create a new map", re.I)
+# Home flow: 'Create a new map' opens a dialog whose confirm button is 'Create'.
+SEL_CREATE_CONFIRM = re.compile(r"^\s*create\s*$", re.I)
 SEL_IMPORT = re.compile(r"^\s*import\s*$", re.I)
 SEL_UNTITLED_MAP = re.compile(r"untitled map", re.I)
 SEL_SAVE = re.compile(r"^\s*(save|ok|done)\s*$", re.I)
@@ -85,6 +87,34 @@ def _launch_persistent(pw, profile_dir: str, headless: bool):
 def _log(msg: str) -> None:
     """Print a step line so the upload flow is visible while it runs."""
     print(f"  [mymaps] {msg}", flush=True)
+
+
+def _click(scope, pattern, *, timeout_ms: int = 15000, optional: bool = False) -> bool:
+    """Click the first VISIBLE match for `pattern`, trying button → link → text.
+
+    My Maps renders the same label as different element types in different places
+    (and keeps hidden template copies), so a single get_by_text often resolves to a
+    hidden node and times out. Polling several role strategies for a visible hit is
+    far more robust. Returns True on click; raises (unless `optional`) on timeout.
+    """
+    deadline = time.time() + timeout_ms / 1000
+    while time.time() < deadline:
+        for getter in (
+            lambda: scope.get_by_role("button", name=pattern),
+            lambda: scope.get_by_role("link", name=pattern),
+            lambda: scope.get_by_text(pattern),
+        ):
+            try:
+                el = getter().first
+                if el.is_visible():
+                    el.click()
+                    return True
+            except Exception:
+                continue
+        scope.wait_for_timeout(300)
+    if optional:
+        return False
+    raise MyMapsError(f"Could not find a clickable element matching {pattern.pattern!r}.")
 
 
 def _set_kml_on_any_frame(page, kml_path: str, timeout_ms: int = 30000) -> bool:
@@ -145,24 +175,28 @@ def _open_new_map(context):
             "Not signed in to Google. Run `python main.py --login` once and sign in."
         )
 
-    create = page.get_by_text(SEL_CREATE_NEW).first
-    create.wait_for(timeout=15000)
+    page.wait_for_timeout(1500)  # let the home grid render
     _log("clicking 'Create a new map'")
-    # Click ONCE. My Maps normally navigates the same tab; only some flows open a
-    # popup. Adopt the popup if it appears, otherwise treat this tab as the editor.
-    # (Clicking a second time on the now-navigated page is what caused the 30s
-    # 'Locator.click timeout' — the button no longer exists after navigation.)
+    _click(page, SEL_CREATE_NEW, timeout_ms=20000)
+
+    # That opens a dialog whose confirm button is 'Create'. It isn't always shown
+    # (some accounts skip straight to the editor), so treat it as optional.
+    _log("confirming with 'Create' (if the dialog appears)")
+    if _click(page, SEL_CREATE_CONFIRM, timeout_ms=6000, optional=True):
+        _log("dialog confirmed")
+
+    # Now we should be redirected into the editor (URL gains '/edit').
     try:
-        with context.expect_page(timeout=5000) as new_page_info:
-            create.click()
-        editor = new_page_info.value
-        _log("editor opened in a new tab")
+        page.wait_for_url(re.compile(r"/maps/d/.*edit"), timeout=20000)
     except Exception:
-        editor = page
-        _log("editor opened in the same tab")
-    editor.wait_for_load_state("load")
-    _log(f"editor URL: {editor.url}")
-    return editor
+        pass
+    page.wait_for_load_state("load")
+    _log(f"editor URL: {page.url}")
+    if "edit" not in page.url:
+        raise MyMapsError(
+            f"Did not reach the map editor after creating a map (URL: {page.url})."
+        )
+    return page
 
 
 def _set_title(editor, title: str) -> None:
@@ -219,8 +253,9 @@ class MyMapsSession:
         try:
             # Wait for the layer panel (with its 'Import' link) to render.
             editor.wait_for_load_state("domcontentloaded")
+            editor.wait_for_timeout(1500)
             _log("clicking 'Import' on the base layer")
-            editor.get_by_text(SEL_IMPORT).first.click(timeout=20000)
+            _click(editor, SEL_IMPORT, timeout_ms=20000)
 
             _log(f"selecting KML file: {kml_path}")
             if not _set_kml_on_any_frame(editor, kml_path):
