@@ -12,3 +12,6 @@ __pycache__/
 
 # Output
 output/
+
+# Playwright persistent browser profile (holds the Google login)
+.pw-profile/

@@ -2,3 +2,7 @@ google-genai>=0.8.0
 google-auth>=2.0
 python-dotenv>=1.0.0
 streamlit>=1.40
+# My Maps browser automation + Drive sharing
+playwright>=1.40
+google-api-python-client>=2.0
+google-auth-oauthlib>=1.0

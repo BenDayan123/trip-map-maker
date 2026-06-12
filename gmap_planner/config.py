@@ -14,6 +14,27 @@ GEOCODE_URL = "https://maps.googleapis.com/maps/api/geocode/json"
 GEMINI_DAILY_LIMIT = 50
 GEO_MONTHLY_LIMIT = 10000
 
+# --- My Maps browser automation + Drive sharing -------------------------------
+# My Maps has no create/import API, so a map is created by driving the My Maps
+# editor with Playwright. Sharing then goes through the Drive API (a My Maps map
+# is a Drive file of this mimeType).
+MYMAPS_HOME_URL = "https://www.google.com/maps/d/?hl=en"
+MYMAPS_MAP_MIME = "application/vnd.google-apps.map"
+# Persistent Chromium profile so the one-time Google login is reused on every run.
+PW_PROFILE_DIR = ".pw-profile"
+# OAuth client + cached token for the Drive sharing step (both gitignored).
+DRIVE_CREDENTIALS_FILE = "credentials.json"
+DRIVE_TOKEN_FILE = "token.json"
+# Sharing a map created in the browser (not by this app) needs full Drive scope;
+# the narrower drive.file scope only covers files the app itself created.
+DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive"]
+# Friendly --share-role values → Drive permission roles.
+DRIVE_ROLE_ALIASES = {
+    "viewer": "reader", "reader": "reader",
+    "commenter": "commenter", "comment": "commenter",
+    "editor": "writer", "writer": "writer",
+}
+
 # Per-day pin colors (Material 700 shades; white number stays readable on each).
 DAY_COLORS = [
     "0288D1", "D32F2F", "388E3C", "7B1FA2", "E65100", "00796B",
