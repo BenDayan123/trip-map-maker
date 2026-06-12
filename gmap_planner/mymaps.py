@@ -82,13 +82,20 @@ def _launch_persistent(pw, profile_dir: str, headless: bool):
     return pw.chromium.launch_persistent_context(profile_dir, headless=headless)
 
 
+def _log(msg: str) -> None:
+    """Print a step line so the upload flow is visible while it runs."""
+    print(f"  [mymaps] {msg}", flush=True)
+
+
 def _set_kml_on_any_frame(page, kml_path: str, timeout_ms: int = 30000) -> bool:
     """Find the (often hidden) <input type=file> across all frames and set the KML.
 
     Setting the file input directly is far more robust than clicking the Google
-    Picker "Browse" button, which lives in a cross-origin iframe.
+    Picker "Browse" button, which lives in a cross-origin iframe. If the Picker
+    opens on the Drive tab (no file input present), click its "Upload" tab once.
     """
     deadline = time.time() + timeout_ms / 1000
+    tried_upload_tab = False
     while time.time() < deadline:
         for frame in page.frames:
             try:
@@ -98,7 +105,20 @@ def _set_kml_on_any_frame(page, kml_path: str, timeout_ms: int = 30000) -> bool:
             if inp is not None:
                 inp.set_input_files(kml_path)
                 return True
+        # File input only exists on the Picker's Upload tab — switch to it once.
+        if not tried_upload_tab:
+            tried_upload_tab = True
+            for frame in page.frames:
+                try:
+                    tab = frame.get_by_text(re.compile(r"upload", re.I)).first
+                    if tab.count():
+                        _log("clicking the Picker 'Upload' tab")
+                        tab.click(timeout=2000)
+                        break
+                except Exception:
+                    continue
         page.wait_for_timeout(500)
+    _log(f"no file input found; frames present: {[f.url for f in page.frames]}")
     return False
 
 
@@ -116,6 +136,7 @@ def _wait_for_mid(page, timeout_ms: int = 60000) -> str | None:
 def _open_new_map(context):
     """Open My Maps home and click 'Create a new map'; return the editor page."""
     page = context.new_page()
+    _log("opening My Maps home")
     page.goto(MYMAPS_HOME_URL, wait_until="load")
 
     # If not signed in, the home page shows a Sign-in prompt instead of the editor.
@@ -124,15 +145,23 @@ def _open_new_map(context):
             "Not signed in to Google. Run `python main.py --login` once and sign in."
         )
 
-    # The create action may open the editor in a new tab; handle both cases.
+    create = page.get_by_text(SEL_CREATE_NEW).first
+    create.wait_for(timeout=15000)
+    _log("clicking 'Create a new map'")
+    # Click ONCE. My Maps normally navigates the same tab; only some flows open a
+    # popup. Adopt the popup if it appears, otherwise treat this tab as the editor.
+    # (Clicking a second time on the now-navigated page is what caused the 30s
+    # 'Locator.click timeout' — the button no longer exists after navigation.)
     try:
-        with context.expect_page(timeout=4000) as new_page_info:
-            page.get_by_text(SEL_CREATE_NEW).first.click()
+        with context.expect_page(timeout=5000) as new_page_info:
+            create.click()
         editor = new_page_info.value
+        _log("editor opened in a new tab")
     except Exception:
-        page.get_by_text(SEL_CREATE_NEW).first.click()
         editor = page
+        _log("editor opened in the same tab")
     editor.wait_for_load_state("load")
+    _log(f"editor URL: {editor.url}")
     return editor
 
 
@@ -188,17 +217,25 @@ class MyMapsSession:
         """
         editor = _open_new_map(self._ctx)
         try:
-            # Open the importer on the base layer, then feed it the KML file.
-            editor.get_by_text(SEL_IMPORT).first.click(timeout=15000)
+            # Wait for the layer panel (with its 'Import' link) to render.
+            editor.wait_for_load_state("domcontentloaded")
+            _log("clicking 'Import' on the base layer")
+            editor.get_by_text(SEL_IMPORT).first.click(timeout=20000)
+
+            _log(f"selecting KML file: {kml_path}")
             if not _set_kml_on_any_frame(editor, kml_path):
                 raise MyMapsError("Could not find the file-upload input in the import dialog.")
 
             # Importing triggers the first save, which is when `mid` appears.
+            _log("file submitted; waiting for the map to save (mid in URL)")
             mid = _wait_for_mid(editor, timeout_ms=90000)
             if not mid:
                 raise MyMapsError("Timed out waiting for the map to be created (no mid in URL).")
+            _log(f"map created: mid={mid}")
 
+            _log("setting the map title")
             _set_title(editor, title)
+            _log("done")
             return {"title": title, "url": editor.url, "mid": mid}
         except MyMapsError:
             self._dump_screenshot(editor, kml_path)
