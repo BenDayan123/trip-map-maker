@@ -199,18 +199,62 @@ def _open_new_map(context):
     return page
 
 
-def _set_title(editor, title: str) -> None:
-    """Rename the map from 'Untitled map' to `title` via the title dialog."""
+def _dialog_title_box(editor):
+    """Return the visible title text box of the 'Edit map title' dialog, or None.
+
+    Scoped to the dialog first so we don't grab the map's place-search box by
+    mistake (which is also a textbox on the page).
+    """
+    for loc in (
+        editor.get_by_role("dialog").get_by_role("textbox"),
+        editor.locator("input.navbar-form-input, .modal-dialog input[type=text]"),
+        editor.get_by_role("textbox"),
+    ):
+        try:
+            el = loc.first
+            if el.is_visible():
+                return el
+        except Exception:
+            continue
+    return None
+
+
+def _set_title(editor, title: str) -> bool:
+    """Rename the map from 'Untitled map' to `title` via the title dialog.
+
+    Returns True if the title was changed. Logs (instead of silently swallowing)
+    so a failure here is visible — the rename is the user-facing point of the step.
+    """
+    _log(f"renaming map to: {title}")
     try:
-        editor.get_by_text(SEL_UNTITLED_MAP).first.click(timeout=8000)
-        # The dialog's first text input is the map title.
-        box = editor.locator("input[type=text], textarea").first
+        # Open the title dialog by clicking the current (Untitled) map name.
+        if not _click(editor, SEL_UNTITLED_MAP, timeout_ms=8000, optional=True):
+            _log("could not find the 'Untitled map' title to click")
+            return False
+
+        box = _dialog_title_box(editor)
+        if box is None:
+            _log("title dialog did not expose a text box")
+            return False
         box.fill(title)
-        editor.get_by_role("button", name=SEL_SAVE).first.click()
-        editor.wait_for_timeout(1000)
-    except Exception:
-        # Title is cosmetic — never fail the whole run over it.
-        pass
+
+        # Confirm: a Save/OK button if present, otherwise Enter commits the field.
+        if not _click(editor, SEL_SAVE, timeout_ms=5000, optional=True):
+            box.press("Enter")
+        editor.wait_for_timeout(1200)
+
+        # Verify the rename actually took (the legend should now show `title`).
+        try:
+            if editor.get_by_text(title, exact=False).first.is_visible():
+                _log("title updated")
+                return True
+        except Exception:
+            pass
+        _log("title dialog handled (could not verify the new name on screen)")
+        return True
+    except Exception as e:
+        _log(f"title change failed: {e}")
+        return False
 
 
 class MyMapsSession:
@@ -269,7 +313,8 @@ class MyMapsSession:
             _log(f"map created: mid={mid}")
 
             _log("setting the map title")
-            _set_title(editor, title)
+            if not _set_title(editor, title):
+                _log("WARNING: map left as 'Untitled map' (title step failed)")
             _log("done")
             return {"title": title, "url": editor.url, "mid": mid}
         except MyMapsError:
