@@ -311,3 +311,28 @@ def login(profile_dir: str = PW_PROFILE_DIR, timeout_s: int = 300) -> None:
             page.wait_for_timeout(2000)
         ctx.close()
         raise MyMapsError("Timed out waiting for Google login.")
+
+
+def is_logged_in(profile_dir: str = PW_PROFILE_DIR) -> bool:
+    """Quick headless check: is the saved profile signed in to My Maps?
+
+    Launches the persistent profile headless, loads the My Maps home, and looks for
+    the 'Create a new map' affordance (only shown when signed in). Returns False on
+    any error (Playwright missing, no profile yet, ...).
+    """
+    try:
+        sync_playwright = _import_playwright()
+    except MyMapsError:
+        return False
+    try:
+        with sync_playwright() as pw:
+            ctx = _launch_persistent(pw, profile_dir, headless=True)
+            try:
+                page = ctx.new_page()
+                page.goto(MYMAPS_HOME_URL, wait_until="load")
+                page.wait_for_timeout(1500)
+                return bool(page.get_by_text(SEL_CREATE_NEW).count())
+            finally:
+                ctx.close()
+    except Exception:
+        return False

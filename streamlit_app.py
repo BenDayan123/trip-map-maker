@@ -16,8 +16,15 @@ import zipfile
 
 import streamlit as st
 
-from gmap_planner.config import GEMINI_DAILY_LIMIT, GEO_MONTHLY_LIMIT, MAX_LAYERS_PER_FILE
+from gmap_planner.config import (
+    DRIVE_CREDENTIALS_FILE,
+    GEMINI_DAILY_LIMIT,
+    GEO_MONTHLY_LIMIT,
+    MAX_LAYERS_PER_FILE,
+)
 from gmap_planner.errors import PipelineError
+from gmap_planner.mymaps import is_logged_in, login
+from gmap_planner.publish import publish_kml_files
 from gmap_planner.service import run_pipeline
 from gmap_planner.usage import get_api_usage
 
@@ -147,6 +154,74 @@ with st.sidebar:
         gemini_key_override = st.text_input("Gemini API key", type="password")
         geo_key_override = st.text_input("Geocoding API key", type="password")
 
+    st.divider()
+    st.header("Publish to My Maps")
+    st.caption(
+        "Create a live Google My Maps map per file and share it — runs a browser "
+        "on **this machine**, so it only works when Streamlit runs locally."
+    )
+    publish_enabled = st.toggle(
+        "Create & share maps after generating",
+        value=False,
+        help="After the KML is built, drive My Maps to import each file as its own "
+        "map, then share it via the Drive API.",
+    )
+    if publish_enabled:
+        # --- Google login (Playwright persistent profile) ---
+        logged_in = st.session_state.get("gmaps_logged_in")
+        cols = st.columns([1, 1])
+        if cols[0].button("🔐 Log in to Google", use_container_width=True):
+            with st.spinner("Opening a browser window — sign in to Google, "
+                            "then return here…"):
+                try:
+                    login()
+                    st.session_state["gmaps_logged_in"] = True
+                    st.success("Logged in. Session saved for future runs.")
+                except Exception as e:
+                    st.session_state["gmaps_logged_in"] = False
+                    st.error(f"Login failed: {e}")
+        if cols[1].button("Check status", use_container_width=True):
+            with st.spinner("Checking the saved Google session…"):
+                st.session_state["gmaps_logged_in"] = is_logged_in()
+        if logged_in is True:
+            st.caption("✅ Signed in to Google.")
+        elif logged_in is False:
+            st.caption("⚠️ Not signed in — click **Log in to Google**.")
+
+        share_emails = st.text_input(
+            "Share with (emails, comma-separated)",
+            help="Each created map is shared with these people. Leave blank to "
+            "create the maps without sharing.",
+        )
+        share_role = st.selectbox(
+            "Their access", ["viewer", "commenter", "editor"], index=0,
+        )
+        notify_share = st.toggle("Email people when shared", value=True)
+        show_browser = st.toggle(
+            "Show the browser while working", value=False,
+            help="Headless by default. Turn on to watch/debug the automation.",
+        )
+        with st.expander("Drive sharing credentials (only if sharing)"):
+            st.caption(
+                "Sharing uses the Google Drive API. Upload an OAuth **Desktop** "
+                "client `credentials.json` (Drive API enabled). Saved locally; "
+                "a browser consent runs once on first share."
+            )
+            cred_upload = st.file_uploader(
+                "credentials.json", type=["json"], key="drive_creds"
+            )
+            if cred_upload is not None:
+                with open(DRIVE_CREDENTIALS_FILE, "wb") as f:
+                    f.write(cred_upload.getbuffer())
+                st.success(f"Saved to {DRIVE_CREDENTIALS_FILE}.")
+            if os.path.exists(DRIVE_CREDENTIALS_FILE):
+                st.caption(f"✅ {DRIVE_CREDENTIALS_FILE} present.")
+    else:
+        share_emails = ""
+        share_role = "viewer"
+        notify_share = True
+        show_browser = False
+
 gemini_api_key = gemini_key_override or get_secret("GOOGLE_API_KEY")
 geo_api_key = geo_key_override or get_secret("GEO_API_KEY")
 
@@ -222,6 +297,42 @@ if generate and uploaded is not None:
             st.session_state["result_files"] = [
                 (os.path.basename(p), open(p, "rb").read()) for p in result.files
             ]
+
+            # --- Optional: publish each KML to My Maps + share (local only) ---
+            st.session_state.pop("map_results", None)
+            if publish_enabled:
+                recipients = [e.strip() for e in share_emails.split(",") if e.strip()]
+                try:
+                    with st.status("Publishing to Google My Maps…", expanded=True) as pstatus:
+                        pbar = st.progress(0.0)
+
+                        def publish_progress(step: str, frac: float) -> None:
+                            pstatus.update(label=step)
+                            pbar.progress(min(max(frac, 0.0), 1.0))
+
+                        maps = publish_kml_files(
+                            result.files,
+                            trip_name=result.trip_name,
+                            recipients=recipients,
+                            role=share_role,
+                            headless=not show_browser,
+                            notify=notify_share,
+                            progress=publish_progress,
+                        )
+                        pstatus.update(label="Published to My Maps", state="complete")
+                    # Key map results by filename so the download list can link them.
+                    st.session_state["map_results"] = {
+                        os.path.basename(m.file): {
+                            "url": m.url, "mid": m.mid,
+                            "shared_with": m.shared_with, "error": m.error,
+                        }
+                        for m in maps
+                    }
+                except Exception as e:  # auth/setup failure before per-file loop
+                    st.warning(
+                        "Maps couldn't be published (the KML files were still "
+                        f"created): {e}"
+                    )
         except PipelineError as e:
             st.error(str(e))
             st.stop()
@@ -255,12 +366,22 @@ if "result_files" in st.session_state:
         )
         st.caption("…or grab individual day-layers:")
 
+    map_results = st.session_state.get("map_results", {})
+    if map_results:
+        ok = sum(1 for m in map_results.values() if not m["error"])
+        st.info(f"🌍 Published {ok}/{len(map_results)} map(s) to Google My Maps.")
+
     for i, (name, data) in enumerate(files, start=1):
         label = os.path.splitext(name)[0]
         day_label = f"Days {label}" if "-" in label else f"Day {label}"
         size_kb = len(data) / 1024
+        mr = map_results.get(name)
         with st.container(border=True):
-            info, btn = st.columns([3, 1], vertical_alignment="center")
+            if mr and not mr["error"]:
+                info, btn, link = st.columns([3, 1, 1], vertical_alignment="center")
+            else:
+                info, btn = st.columns([3, 1], vertical_alignment="center")
+                link = None
             info.markdown(f"🗺️ **{day_label}**  \n`{name}` · {size_kb:.0f} KB")
             btn.download_button(
                 "⬇️ Download",
@@ -270,13 +391,24 @@ if "result_files" in st.session_state:
                 key=f"dl_{name}",
                 use_container_width=True,
             )
+            if link is not None:
+                view_url = (
+                    f"https://www.google.com/maps/d/viewer?mid={mr['mid']}"
+                    if mr.get("mid") else mr["url"]
+                )
+                link.link_button("🌍 Open map", view_url, use_container_width=True)
+            if mr and mr["error"]:
+                info.caption(f"⚠️ Map not created: {mr['error']}")
+            elif mr and mr["shared_with"]:
+                info.caption(f"Shared with: {', '.join(mr['shared_with'])}")
 
-    with st.expander("How to import into Google My Maps"):
-        st.markdown(
-            "1. Open [Google My Maps](https://www.google.com/mymaps) → **Create a new map**.\n"
-            "2. Click **Import** under a layer and upload one KML file.\n"
-            "3. Each KML adds up to 10 day-layers. For longer trips, import each "
-            "file into its own layer/map.\n\n"
-            "_Automatic upload isn't possible — Google removed the My Maps import "
-            "API, so this step is manual._"
-        )
+    if not map_results:
+        with st.expander("How to import into Google My Maps"):
+            st.markdown(
+                "1. Open [Google My Maps](https://www.google.com/mymaps) → **Create a new map**.\n"
+                "2. Click **Import** under a layer and upload one KML file.\n"
+                "3. Each KML adds up to 10 day-layers. For longer trips, import each "
+                "file into its own layer/map.\n\n"
+                "_Or enable **Publish to My Maps** in the sidebar (local runs) to do "
+                "this automatically and get a shareable link per file._"
+            )
