@@ -18,7 +18,12 @@ def load_file_for_gemini(file_path: str, client: genai.Client) -> tuple[list, st
             text = f.read()
         return [GEMINI_EXTRACTION_PROMPT, text], "inline TXT"
 
-    uploaded = client.files.upload(file=file_path)
+    try:
+        uploaded = client.files.upload(file=file_path)
+    except Exception as e:
+        raise PipelineError(
+            f"Gemini Files API failed to upload {os.path.basename(file_path)!r}: {e}"
+        ) from e
     return [GEMINI_EXTRACTION_PROMPT, uploaded], "PDF via Files API"
 
 
@@ -36,16 +41,18 @@ def extract_itinerary(parts: list, client: genai.Client) -> dict:
     except json.JSONDecodeError as e:
         raw = response.text if response else "<no response>"
         raise PipelineError(
-            f"Gemini returned invalid JSON ({e}). Raw response:\n{raw}"
+            f"Gemini API (location extraction) returned invalid JSON: {e}\n"
+            f"Raw response:\n{raw}"
         ) from e
     except PipelineError:
         raise
     except Exception as e:
-        raise PipelineError(f"Error calling Gemini API: {e}") from e
+        raise PipelineError(f"Gemini API (location extraction) request failed: {e}") from e
 
     if "trip_name" not in data or "days" not in data:
         raise PipelineError(
-            "Gemini response is missing required fields ('trip_name', 'days').\n"
+            "Gemini API (location extraction) response is missing required "
+            "fields ('trip_name', 'days').\n"
             f"Raw response: {response.text}"
         )
 
