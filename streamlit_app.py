@@ -328,6 +328,9 @@ if generate and uploaded is not None:
                         }
                         for m in maps
                     }
+                    # Log this publish to the analytics Sheet (best-effort).
+                    from gmap_planner.analytics import record_publish
+                    record_publish(result.trip_name, maps)
                 except Exception as e:  # auth/setup failure before per-file loop
                     st.warning(
                         "Maps couldn't be published (the KML files were still "
