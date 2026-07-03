@@ -24,6 +24,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--login", action="store_true",
                         help="One-time headed Google login for My Maps, then exit. "
                              "Saves the session so later runs are headless.")
+    parser.add_argument("--export-session", action="store_true",
+                        help="Headed Google login, then write the signed-in session to "
+                             "storage_state.json for the GOOGLE_STORAGE_STATE secret "
+                             "(lets a headless host publish signed-in), then exit.")
     parser.add_argument("--share", default=None, metavar="EMAILS",
                         help="Comma-separated emails to create + share a My Maps map with "
                              "(one map per KML file). Enables browser automation.")
@@ -40,8 +44,8 @@ def parse_args() -> argparse.Namespace:
                         help=f"Drive OAuth client file (default: {DRIVE_CREDENTIALS_FILE}).")
     args = parser.parse_args()
 
-    if args.login:
-        return args  # login mode needs no input file
+    if args.login or args.export_session:
+        return args  # login / session-export modes need no input file
 
     if not args.file:
         parser.error("the following arguments are required: file (or use --login)")

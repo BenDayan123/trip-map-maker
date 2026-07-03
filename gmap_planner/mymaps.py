@@ -16,7 +16,11 @@ First-time setup: run `python main.py --login` once (headed) and sign in by hand
 every later run reuses that profile and runs headless.
 """
 
+import json
+import os
 import re
+import subprocess
+import sys
 import time
 
 from .config import MYMAPS_HOME_URL, PW_PROFILE_DIR
@@ -51,6 +55,32 @@ def _import_playwright():
             "  playwright install chromium"
         ) from e
     return sync_playwright
+
+
+_chromium_ready = False
+
+
+def ensure_chromium() -> None:
+    """Fetch Playwright's Chromium binary once per process if it's missing.
+
+    Streamlit Community Cloud installs pip deps but never runs `playwright install`,
+    so the browser binary is absent at runtime. This downloads it on demand (the OS
+    libraries it needs come from the repo's `packages.txt`). No-ops after the first
+    call and is cheap when the binary is already present.
+    """
+    global _chromium_ready
+    if _chromium_ready:
+        return
+    try:
+        subprocess.run(
+            [sys.executable, "-m", "playwright", "install", "chromium"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except Exception as e:  # best-effort — the launch step reports a clear error
+        _log(f"'playwright install chromium' did not complete: {e}")
+    _chromium_ready = True
 
 
 # Hide the two signals Google uses to block sign-in ("This browser or app may not
@@ -92,6 +122,58 @@ def _launch_persistent(pw, profile_dir: str, headless: bool):
             "interactive Google login, so it only works when the app runs "
             "locally — not on a hosted, headless server (e.g. Streamlit "
             "Community Cloud)."
+        ) from last_err
+    raise MyMapsError(f"Couldn't launch a browser for My Maps: {msg}") from last_err
+
+
+def _coerce_storage_state(storage_state):
+    """Normalize a storage_state (dict / JSON string / file path) to what Playwright
+    wants: a dict, or None. A path is passed through as a str; JSON text is parsed."""
+    if storage_state is None:
+        return None
+    if isinstance(storage_state, dict):
+        return storage_state
+    if isinstance(storage_state, str):
+        s = storage_state.strip()
+        if not s:
+            return None
+        if s.startswith("{"):
+            try:
+                return json.loads(s)
+            except json.JSONDecodeError as e:
+                raise MyMapsError(f"GOOGLE_STORAGE_STATE is not valid JSON: {e}") from e
+        if os.path.exists(s):
+            return s  # a file path — Playwright reads it directly
+        raise MyMapsError(
+            "storage_state string is neither JSON nor an existing file path."
+        )
+    raise MyMapsError(f"Unsupported storage_state type: {type(storage_state).__name__}")
+
+
+def _launch_with_storage_state(pw, storage_state):
+    """Headless throwaway context restored from a captured session (Cloud path).
+
+    Returns (browser, context). Chrome/Edge channel first (same anti-bot posture as
+    the persistent launch), falling back to bundled Chromium.
+    """
+    common = dict(args=_LAUNCH_ARGS, ignore_default_args=_IGNORE_ARGS)
+    last_err = None
+    for channel in ("chrome", "msedge", None):
+        try:
+            browser = pw.chromium.launch(
+                headless=True, **({"channel": channel} if channel else {}), **common
+            )
+            ctx = browser.new_context(storage_state=storage_state)
+            return browser, ctx
+        except Exception as e:
+            last_err = e
+            continue
+    msg = str(last_err) or repr(last_err)
+    if "Executable doesn't exist" in msg or "playwright install" in msg:
+        raise MyMapsError(
+            "Playwright's Chromium isn't installed in this environment. On Streamlit "
+            "Community Cloud, add the libs to packages.txt; the binary is fetched at "
+            "startup by ensure_chromium()."
         ) from last_err
     raise MyMapsError(f"Couldn't launch a browser for My Maps: {msg}") from last_err
 
@@ -270,23 +352,48 @@ def _set_title(editor, title: str) -> bool:
 
 
 class MyMapsSession:
-    """Persistent-profile Chromium session that creates one map per KML file."""
+    """Chromium session that creates one map per KML file.
 
-    def __init__(self, profile_dir: str = PW_PROFILE_DIR, headless: bool = True):
+    Two auth modes:
+    - **local** (default): a *persistent* Chromium profile whose one-time headed
+      Google login is reused on every run.
+    - **seeded** (`storage_state` given): a headless throwaway context restored from
+      a captured `storage_state` (cookies + localStorage). This is the only way to
+      run signed-in on a headless host (e.g. Streamlit Community Cloud) where an
+      interactive login is impossible. `storage_state` may be a dict, a JSON string,
+      or a path to a JSON file.
+    """
+
+    def __init__(
+        self,
+        profile_dir: str = PW_PROFILE_DIR,
+        headless: bool = True,
+        storage_state=None,
+    ):
         self.profile_dir = profile_dir
         self.headless = headless
+        self.storage_state = _coerce_storage_state(storage_state)
         self._pw = None
         self._ctx = None
+        self._browser = None
 
     def __enter__(self):
+        ensure_chromium()
         sync_playwright = _import_playwright()
         self._pw = sync_playwright().start()
-        self._ctx = _launch_persistent(self._pw, self.profile_dir, self.headless)
+        if self.storage_state is not None:
+            self._browser, self._ctx = _launch_with_storage_state(
+                self._pw, self.storage_state
+            )
+        else:
+            self._ctx = _launch_persistent(self._pw, self.profile_dir, self.headless)
         return self
 
     def __exit__(self, *exc):
         if self._ctx:
             self._ctx.close()
+        if self._browser:
+            self._browser.close()
         if self._pw:
             self._pw.stop()
 
@@ -368,6 +475,40 @@ def login(profile_dir: str = PW_PROFILE_DIR, timeout_s: int = 300) -> None:
             page.wait_for_timeout(2000)
         ctx.close()
         raise MyMapsError("Timed out waiting for Google login.")
+
+
+def export_session(
+    profile_dir: str = PW_PROFILE_DIR,
+    out_path: str = "storage_state.json",
+    timeout_s: int = 300,
+) -> str:
+    """Headed login, then save the signed-in session to `out_path` as JSON.
+
+    The captured `storage_state` (cookies + localStorage) can be pasted into the
+    `GOOGLE_STORAGE_STATE` secret so a headless host (Streamlit Community Cloud) can
+    publish while signed in — no interactive login there. Returns `out_path`.
+    """
+    ensure_chromium()
+    sync_playwright = _import_playwright()
+    print(
+        "Opening Google My Maps. Sign in with your Google account in the browser "
+        "window; the session will be saved once sign-in is detected.\n"
+    )
+    with sync_playwright() as pw:
+        ctx = _launch_persistent(pw, profile_dir, headless=False)
+        try:
+            page = ctx.pages[0] if ctx.pages else ctx.new_page()
+            page.goto(MYMAPS_HOME_URL, wait_until="load")
+            deadline = time.time() + timeout_s
+            while time.time() < deadline:
+                if page.get_by_text(SEL_CREATE_NEW).count():
+                    ctx.storage_state(path=out_path)
+                    print(f"Session saved to {out_path}.")
+                    return out_path
+                page.wait_for_timeout(2000)
+            raise MyMapsError("Timed out waiting for Google login.")
+        finally:
+            ctx.close()
 
 
 def is_logged_in(profile_dir: str = PW_PROFILE_DIR) -> bool:

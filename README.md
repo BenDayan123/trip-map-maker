@@ -31,6 +31,13 @@ Keys via `.env` (`GOOGLE_API_KEY=`, `GEO_API_KEY=`) or `--api-key` / `--geo-api-
 `streamlit_app.py` → set `GOOGLE_API_KEY` and `GEO_API_KEY` in the app's Secrets.
 Admins just open the URL — nothing to install.
 
+_Publishing to My Maps from Cloud (optional, best-effort):_ `packages.txt` ships
+chromium's libs and the app fetches the browser at startup; capture a signed-in
+session locally with `python main.py --export-session` and paste `storage_state.json`
+into the `GOOGLE_STORAGE_STATE` secret. Google may still re-challenge a session
+replayed from a datacenter IP, so this can fail — publishing from a local run is the
+reliable path.
+
 **Docker (Render / Fly.io / a VPS):**
 ```bash
 docker build -t trip-map-maker .

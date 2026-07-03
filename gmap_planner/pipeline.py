@@ -64,6 +64,18 @@ def main() -> None:
             sys.exit(f"Error: {e}")
         return
 
+    if args.export_session:
+        from .mymaps import export_session
+        try:
+            out = export_session(args.profile_dir)
+        except PipelineError as e:
+            sys.exit(f"Error: {e}")
+        print(
+            f"\nPaste the contents of {out} into your app's GOOGLE_STORAGE_STATE "
+            "secret to let a hosted (headless) deployment publish while signed in."
+        )
+        return
+
     api_key = resolve_api_key(args)
     geo_api_key = args.geo_api_key or os.environ.get("GEO_API_KEY")
 

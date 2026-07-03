@@ -44,10 +44,15 @@ def publish_kml_files(
     credentials_path: str = "credentials.json",
     token_path: str = "token.json",
     notify: bool = True,
+    storage_state=None,
     progress: ProgressFn | None = None,
 ) -> list[PublishedMap]:
     """Create one shared My Maps map per KML file. Never raises — per-file errors
     are captured on each ``PublishedMap.error`` so one bad file can't abort the rest.
+
+    `storage_state`, when given (dict / JSON string / path), runs the browser headless
+    from a captured signed-in session instead of the local persistent profile — the
+    path used on a headless host (Streamlit Community Cloud).
     """
     def report(step: str, frac: float) -> None:
         if progress:
@@ -58,7 +63,9 @@ def publish_kml_files(
 
     results: list[PublishedMap] = []
     total = len(kml_files)
-    with MyMapsSession(profile_dir=profile_dir, headless=headless) as session:
+    with MyMapsSession(
+        profile_dir=profile_dir, headless=headless, storage_state=storage_state
+    ) as session:
         for i, kml in enumerate(kml_files):
             title = _title_for(kml, trip_name)
             rec = PublishedMap(file=kml, title=title)
