@@ -1,6 +1,6 @@
 """Streamlit GUI for the itinerary → Google My Maps KML planner.
 
-Run locally:   streamlit run streamlit_app.py
+Run locally:   streamlit run Home.py
 Hosted:        deploy to Streamlit Community Cloud (or any host) and set the
                GOOGLE_API_KEY / GEO_API_KEY secrets.
 
@@ -108,13 +108,7 @@ def render_usage_gauges() -> None:
             )
         return
 
-    g, geo = usage["gemini"], usage["geocode"]
-    st.markdown(
-        ring_svg(g["pct"], f"{g['pct']:.0f}%",
-                 f"Gemini · today<br>{g['used']:,} / {g['limit']:,}",
-                 _gauge_color(g["pct"])),
-        unsafe_allow_html=True,
-    )
+    geo = usage["geocode"]
     st.markdown(
         ring_svg(geo["pct"], f"{geo['pct']:.0f}%",
                  f"Geocoding · this month<br>{geo['used']:,} / {geo['limit']:,}",

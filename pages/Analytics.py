@@ -1,7 +1,7 @@
 """Admin-only Analytics page: created-map log from the Google Sheet.
 
 Streamlit auto-discovers files under ``pages/`` and adds them to the sidebar nav;
-``streamlit_app.py`` stays the default "Create map" page. Gated behind an
+``Home.py`` stays the default "Create map" page. Gated behind an
 ``ADMIN_PASSWORD`` secret so only the admin sees the log.
 """
 
