@@ -7,7 +7,7 @@ Format the output STRICTLY as a valid JSON array.
 
 Schema:
 {
-  "trip_name": "<short descriptive name with the names of the people traveling, the country>",
+  "trip_name": "<short descriptive name with only the names of the people traveling (in hebrew)>",
   "days": [
     {
       "day": <integer starting at 1>,
