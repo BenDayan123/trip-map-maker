@@ -69,8 +69,27 @@ def _worksheet():
         )
         client = gspread.authorize(creds)
         return client.open_by_key(sheet_id).sheet1
+    except PermissionError:
+        # gspread wraps a 403 as an empty-message PermissionError.
+        email = _client_email(sa_json)
+        print(
+            "  ! Analytics Sheet unavailable [403 permission]: share the Sheet "
+            f"(Editor) with {email or 'the service account'} and enable the "
+            "Google Sheets API on its project."
+        )
+        return None
     except Exception as e:
-        print(f"  ! Analytics Sheet unavailable: {e}")
+        detail = str(e) or repr(e)
+        print(f"  ! Analytics Sheet unavailable [{type(e).__name__}]: {detail}")
+        return None
+
+
+def _client_email(sa_json) -> str | None:
+    """Service-account email from the SA JSON, for actionable error messages."""
+    try:
+        info = json.loads(sa_json) if isinstance(sa_json, str) else dict(sa_json)
+        return info.get("client_email")
+    except Exception:
         return None
 
 
