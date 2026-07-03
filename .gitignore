@@ -22,3 +22,5 @@ build/
 dist/
 build_logs/
 *.spec
+# Inno Setup compiled installer output
+installer/

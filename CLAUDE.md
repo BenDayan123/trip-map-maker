@@ -48,16 +48,22 @@ Current model: `gemini-3.1-flash-lite` (set via `GEMINI_MODEL` in `config.py`).
 ## Deployment (single admin, local Windows)
 
 The app is run by one admin on their own Windows PC — **not** hosted for other users.
-This is deliberate: locally, Playwright drives real Chrome and `credentials.json`,
+This is deliberate: locally, Playwright drives real Chrome/Edge and `credentials.json`,
 `token.json`, `.pw-profile/`, and the API keys all persist on disk (set once), so the
 whole class of cloud problems (ephemeral disk, headless Google login) doesn't apply.
-One-click batch launchers wrap the flow: `setup.bat` (venv + deps + `playwright install
-chromium`), `login.bat` (`python main.py --login`), `run.bat` (auto `git pull --ff-only`
-then `streamlit run`; `run.vbs` runs it with no console), `update.bat` (`git pull` + pip).
-`SETUP.md` is the admin guide. A sidebar **⚙️ Setup status** expander
-(`render_setup_status` in `streamlit_app.py`) shows which one-time items are configured.
-The Streamlit-Cloud publish path (`packages.txt`, `GOOGLE_STORAGE_STATE`) remains in the
-repo but is unused in this local flow.
+
+**Shipped as a standalone Windows app**, so the admin needs no Python/terminal:
+`build_exe.bat` freezes it with `streamlit-desktop-app` (PyInstaller + pywebview) into
+`dist/TripMapMaker/`, and `build_installer.bat` wraps that into a per-user
+`TripMapMaker-Setup.exe` via `installer.iss` (Inno Setup 6). Frozen-app specifics:
+`gmap_planner/paths.py` `data_dir()` returns `%APPDATA%\TripMapMaker` when
+`sys.frozen` (the exe's cwd is a temp unpack dir); `config.py` anchors the profile/token/
+credentials there; keys are entered in the sidebar **🔑 Settings** page and saved to
+`data_dir/config.json` (there's no `secrets.toml` in a packaged exe — `get_secret` falls
+back to it); `mymaps.ensure_chromium()` no-ops when frozen and drives installed Edge/Chrome.
+A sidebar **⚙️ Setup status** expander (`render_setup_status`) shows what's configured.
+`SETUP.md` is the admin guide. The Streamlit-Cloud publish path (`packages.txt`,
+`GOOGLE_STORAGE_STATE`) remains in the repo but is unused in this local flow.
 
 ## Key design decisions
 

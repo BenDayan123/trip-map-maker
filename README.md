@@ -4,13 +4,14 @@ Turn a travel itinerary (PDF/TXT) into Google My Maps **KML** files — each day
 colored layer with numbered pins. Gemini extracts the places; the Geocoding API
 snaps them to exact coordinates.
 
-## Non-technical admin? Run it locally in one click
+## Non-technical admin? Ship a standalone installer
 
-The intended setup for a single admin: **run on your own PC** — Playwright drives real
-Chrome and your keys + Google login persist, so there's no cloud, no re-uploading, and
-publishing to My Maps just works. Double-click `setup.bat` once, then `run.bat` daily.
-Full steps: **[SETUP.md](SETUP.md)**. Launchers: `setup.bat` / `login.bat` / `run.bat`
-(`run.vbs` = no console) / `update.bat`.
+The intended setup for a single admin: a **Windows installer** (`TripMapMaker-Setup.exe`)
+— no Python, no cloud. They double-click it, open the app, paste API keys in the sidebar
+**Settings**, and (for publishing) sign in to Google once. Everything persists under
+`%APPDATA%\TripMapMaker`. Build it with `build_exe.bat` then `build_installer.bat`
+(needs [Inno Setup 6](https://jrsoftware.org/isdl.php)). Full admin steps:
+**[SETUP.md](SETUP.md)**.
 
 ## Two ways to use it
 
