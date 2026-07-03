@@ -73,15 +73,27 @@ def _launch_persistent(pw, profile_dir: str, headless: bool):
         args=_LAUNCH_ARGS,
         ignore_default_args=_IGNORE_ARGS,
     )
+    last_err = None
     for channel in ("chrome", "msedge", None):
         try:
             if channel:
                 return pw.chromium.launch_persistent_context(channel=channel, **common)
             return pw.chromium.launch_persistent_context(**common)
-        except Exception:
+        except Exception as e:
+            last_err = e
             continue
-    # Last resort: plain bundled Chromium with defaults.
-    return pw.chromium.launch_persistent_context(profile_dir, headless=headless)
+    # Every channel failed. The usual cause is a missing browser binary.
+    msg = str(last_err) or repr(last_err)
+    if "Executable doesn't exist" in msg or "playwright install" in msg:
+        raise MyMapsError(
+            "Playwright's Chromium isn't installed in this environment. Run:\n"
+            "  playwright install chromium\n\n"
+            "Note: My Maps publishing drives a real browser and needs an "
+            "interactive Google login, so it only works when the app runs "
+            "locally — not on a hosted, headless server (e.g. Streamlit "
+            "Community Cloud)."
+        ) from last_err
+    raise MyMapsError(f"Couldn't launch a browser for My Maps: {msg}") from last_err
 
 
 def _log(msg: str) -> None:
