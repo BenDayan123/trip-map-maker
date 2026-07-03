@@ -1,6 +1,6 @@
 """Streamlit GUI for the itinerary → Google My Maps KML planner.
 
-Run locally:   streamlit run Home.py
+Run locally:   streamlit run streamlit_app.py
 Hosted:        deploy to Streamlit Community Cloud (or any host) and set the
                GOOGLE_API_KEY / GEO_API_KEY secrets.
 

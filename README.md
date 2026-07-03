@@ -11,7 +11,7 @@ Drag-and-drop upload, live progress, and download buttons.
 
 ```bash
 pip install -r requirements.txt
-streamlit run Home.py
+streamlit run streamlit_app.py
 ```
 
 API keys are read from `st.secrets` then environment variables:
@@ -28,7 +28,7 @@ Keys via `.env` (`GOOGLE_API_KEY=`, `GEO_API_KEY=`) or `--api-key` / `--geo-api-
 
 **Streamlit Community Cloud (zero-cost, easiest):** push this repo to GitHub →
 [share.streamlit.io](https://share.streamlit.io) → new app → entrypoint
-`Home.py` → set `GOOGLE_API_KEY` and `GEO_API_KEY` in the app's Secrets.
+`streamlit_app.py` → set `GOOGLE_API_KEY` and `GEO_API_KEY` in the app's Secrets.
 Admins just open the URL — nothing to install.
 
 **Docker (Render / Fly.io / a VPS):**
@@ -62,7 +62,7 @@ Import → upload a KML. Each file holds up to 10 day-layers.
 `gmap_planner/` package, CLI and GUI share one entry point:
 - `service.run_pipeline(...)` — runs all stages, reports progress via a callback,
   returns a `PipelineResult`, raises `PipelineError` on failure (never exits).
-- `pipeline.main` — thin CLI wrapper; `Home.py` — the GUI; both call `run_pipeline`.
+- `pipeline.main` — thin CLI wrapper; `streamlit_app.py` — the GUI; both call `run_pipeline`.
 - Stages: `gemini` (extract) · `geocode` (snap coords) · `kml` (build/write).
 
 ## Roadmap: shared sales analytics (not built yet)

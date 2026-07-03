@@ -5,4 +5,4 @@ from gmap_planner.pipeline import main
 if __name__ == "__main__":
     main()
 
-# streamlit run Home.py
+# streamlit run streamlit_app.py
