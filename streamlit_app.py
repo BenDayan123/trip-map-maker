@@ -232,37 +232,27 @@ with st.sidebar:
         help="After the KML is built, drive My Maps to import each file as its own "
         "map, then share it via the Drive API.",
     )
-    seeded_session = get_secret("GOOGLE_STORAGE_STATE")
     if publish_enabled:
-        if seeded_session:
-            # Hosted/headless path: a captured session is supplied via secret, so
-            # there's no interactive login to do here (and none is possible on Cloud).
-            st.caption(
-                "🔑 Using a seeded Google session (GOOGLE_STORAGE_STATE). "
-                "Maps are created headless — no login needed here. "
-                "Capture the session locally with `python main.py --export-session`."
-            )
-        else:
-            # --- Google login (Playwright persistent profile — local only) ---
-            logged_in = st.session_state.get("gmaps_logged_in")
-            cols = st.columns([1, 1])
-            if cols[0].button("🔐 Log in to Google", use_container_width=True):
-                with st.spinner("Opening a browser window — sign in to Google, "
-                                "then return here…"):
-                    try:
-                        login()
-                        st.session_state["gmaps_logged_in"] = True
-                        st.success("Logged in. Session saved for future runs.")
-                    except Exception as e:
-                        st.session_state["gmaps_logged_in"] = False
-                        st.error(f"Login failed: {e}")
-            if cols[1].button("Check status", use_container_width=True):
-                with st.spinner("Checking the saved Google session…"):
-                    st.session_state["gmaps_logged_in"] = is_logged_in()
-            if logged_in is True:
-                st.caption("✅ Signed in to Google.")
-            elif logged_in is False:
-                st.caption("⚠️ Not signed in — click **Log in to Google**.")
+        # --- Google login (Playwright persistent profile) ---
+        logged_in = st.session_state.get("gmaps_logged_in")
+        cols = st.columns([1, 1])
+        if cols[0].button("🔐 Log in to Google", use_container_width=True):
+            with st.spinner("Opening a browser window — sign in to Google, "
+                            "then return here…"):
+                try:
+                    login()
+                    st.session_state["gmaps_logged_in"] = True
+                    st.success("Logged in. Session saved for future runs.")
+                except Exception as e:
+                    st.session_state["gmaps_logged_in"] = False
+                    st.error(f"Login failed: {e}")
+        if cols[1].button("Check status", use_container_width=True):
+            with st.spinner("Checking the saved Google session…"):
+                st.session_state["gmaps_logged_in"] = is_logged_in()
+        if logged_in is True:
+            st.caption("✅ Signed in to Google.")
+        elif logged_in is False:
+            st.caption("⚠️ Not signed in — click **Log in to Google**.")
 
         share_emails = st.text_input(
             "Share with (emails, comma-separated)",
@@ -391,9 +381,8 @@ if generate and uploaded is not None:
                             trip_name=result.trip_name,
                             recipients=recipients,
                             role=share_role,
-                            headless=bool(seeded_session) or not show_browser,
+                            headless=not show_browser,
                             notify=notify_share,
-                            storage_state=seeded_session or None,
                             progress=publish_progress,
                         )
                         pstatus.update(label="Published to My Maps", state="complete")
