@@ -71,6 +71,11 @@ def ensure_chromium() -> None:
     global _chromium_ready
     if _chromium_ready:
         return
+    if getattr(sys, "frozen", False):
+        # Inside a packaged exe there's no `python -m playwright` to invoke; the app
+        # drives the installed Chrome/Edge channel instead (see _launch_persistent).
+        _chromium_ready = True
+        return
     try:
         subprocess.run(
             [sys.executable, "-m", "playwright", "install", "chromium"],

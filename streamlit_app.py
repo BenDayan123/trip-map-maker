@@ -26,6 +26,7 @@ from gmap_planner.config import (
 )
 from gmap_planner.errors import PipelineError
 from gmap_planner.mymaps import is_logged_in, login
+from gmap_planner.paths import data_path
 from gmap_planner.publish import publish_kml_files
 from gmap_planner.service import run_pipeline
 from gmap_planner.usage import get_api_usage
@@ -35,14 +36,36 @@ MAX_UPLOAD_MB = 15
 st.set_page_config(page_title="Trip Map Maker", page_icon="🗺️", layout="centered")
 
 
+def _app_config_path() -> str:
+    return data_path("config.json")
+
+
+def load_app_config() -> dict:
+    """Settings the admin saved via the in-app Settings page (data_dir/config.json)."""
+    try:
+        with open(_app_config_path(), encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def save_app_config(cfg: dict) -> None:
+    with open(_app_config_path(), "w", encoding="utf-8") as f:
+        json.dump(cfg, f, indent=2)
+
+
 def get_secret(name: str) -> str | None:
-    """Key from Streamlit secrets, falling back to environment variables."""
+    """Setting resolved from Streamlit secrets, then env, then the saved config.json.
+
+    The config.json fallback is what makes the packaged exe usable: there's no
+    secrets.toml to edit, so the admin enters keys in the Settings page instead.
+    """
     try:
         if name in st.secrets:
             return st.secrets[name]
     except Exception:
-        pass  # no secrets.toml present (e.g. local dev) — fall back to env
-    return os.environ.get(name)
+        pass  # no secrets.toml present (e.g. packaged exe) — fall back below
+    return os.environ.get(name) or load_app_config().get(name)
 
 
 def ring_svg(pct: float, center: str, sub: str, color: str) -> str:
@@ -154,8 +177,25 @@ def render_setup_status() -> None:
             st.markdown(f"⚪ {label}  \n<small>{hint}</small>", unsafe_allow_html=True)
 
 
+def render_settings() -> None:
+    """Let the admin enter/save API keys without editing files (for the exe)."""
+    cfg = load_app_config()
+    st.caption("Saved on this computer. Needed once.")
+    gk = st.text_input("Gemini API key (GOOGLE_API_KEY)", value=cfg.get("GOOGLE_API_KEY", ""),
+                       type="password", key="cfg_gemini")
+    gek = st.text_input("Geocoding API key (GEO_API_KEY)", value=cfg.get("GEO_API_KEY", ""),
+                        type="password", key="cfg_geo")
+    if st.button("Save keys", use_container_width=True):
+        cfg["GOOGLE_API_KEY"] = gk.strip()
+        cfg["GEO_API_KEY"] = gek.strip()
+        save_app_config(cfg)
+        st.success("Saved. They'll be used on the next run.")
+
+
 # --- Sidebar: usage gauges + options --------------------------------------
 with st.sidebar:
+    with st.expander("🔑 Settings (API keys)"):
+        render_settings()
     with st.expander("⚙️ Setup status"):
         render_setup_status()
     st.header("API usage")

@@ -20,11 +20,15 @@ GEO_MONTHLY_LIMIT = 10000
 # is a Drive file of this mimeType).
 MYMAPS_HOME_URL = "https://www.google.com/maps/d/?hl=en"
 MYMAPS_MAP_MIME = "application/vnd.google-apps.map"
+# Persistent files live in the app data dir: the project folder for a local run, or a
+# stable per-user folder inside a packaged exe (where the cwd is a temp unpack dir).
+from .paths import data_path  # noqa: E402
+
 # Persistent Chromium profile so the one-time Google login is reused on every run.
-PW_PROFILE_DIR = ".pw-profile"
+PW_PROFILE_DIR = data_path(".pw-profile")
 # OAuth client + cached token for the Drive sharing step (both gitignored).
-DRIVE_CREDENTIALS_FILE = "credentials.json"
-DRIVE_TOKEN_FILE = "token.json"
+DRIVE_CREDENTIALS_FILE = data_path("credentials.json")
+DRIVE_TOKEN_FILE = data_path("token.json")
 # Sharing a map created in the browser (not by this app) needs full Drive scope;
 # the narrower drive.file scope only covers files the app itself created.
 DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive"]

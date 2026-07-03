@@ -1,8 +1,26 @@
 # Trip Map Maker — Admin Setup (Windows)
 
 Run the app on your own computer. Set up **once**, then it's a double-click every day.
-Playwright uses your real Chrome, and your keys + Google login are saved locally, so
+Playwright uses your real Chrome/Edge, and your keys + Google login are saved locally, so
 nothing needs re-entering.
+
+## Easiest: the standalone app (no Python needed)
+
+If the developer gave you a **TripMapMaker** folder (or zip):
+
+1. Unzip it anywhere (e.g. your Desktop).
+2. Double-click **`TripMapMaker.exe`** — the app opens in its own window.
+3. Open **🔑 Settings (API keys)** in the left sidebar, paste your Gemini + Geocoding
+   keys, click **Save keys**. (Stored on your PC — done once.)
+4. To publish maps to Google My Maps, enable **Publish to My Maps** and click
+   **Log in to Google** once. Your login is remembered.
+
+Your keys, login, and settings are saved under `%APPDATA%\TripMapMaker`, so they survive
+app restarts and updates. That's it — everything below is the alternative "run from
+source" route for developers.
+
+---
+
 
 ## First-time setup (once)
 

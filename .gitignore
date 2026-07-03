@@ -16,3 +16,9 @@ output/
 
 # Playwright persistent browser profile (holds the Google login)
 .pw-profile/
+
+# PyInstaller / desktop-app build artifacts
+build/
+dist/
+build_logs/
+*.spec
