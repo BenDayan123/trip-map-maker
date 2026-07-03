@@ -3,12 +3,7 @@ REM Build the standalone desktop executable (dist\TripMapMaker\TripMapMaker.exe)
 REM For the developer, not the admin. Requires: pip install streamlit-desktop-app
 cd /d "%~dp0"
 
-if not exist ".venv\Scripts\activate.bat" (
-    echo Run setup.bat first, then: pip install streamlit-desktop-app
-    pause
-    exit /b 1
-)
-call ".venv\Scripts\activate.bat"
+if exist ".venv\Scripts\activate.bat" call ".venv\Scripts\activate.bat"
 
 python -c "import streamlit_desktop_app" 2>nul || python -m pip install streamlit-desktop-app
 
@@ -21,6 +16,16 @@ streamlit-desktop-app build streamlit_app.py --name TripMapMaker ^
   --collect-all gspread ^
   --add-data "gmap_planner;gmap_planner" ^
   --add-data "pages;pages"
+
+REM Trim ~90MB of unused Google API discovery docs; keep only Drive (the only
+REM API this app calls via googleapiclient). Safe: build('drive','v3') reads these.
+set "DOCS=dist\TripMapMaker\_internal\googleapiclient\discovery_cache\documents"
+if exist "%DOCS%" (
+    echo Trimming unused Google API discovery docs...
+    for %%F in ("%DOCS%\*.json") do (
+        if /I not "%%~nxF"=="drive.v2.json" if /I not "%%~nxF"=="drive.v3.json" del "%%F"
+    )
+)
 
 echo.
 echo Done. The app is in dist\TripMapMaker\ (zip that folder to distribute).
