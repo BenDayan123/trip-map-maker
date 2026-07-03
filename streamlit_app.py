@@ -18,9 +18,11 @@ import streamlit as st
 
 from gmap_planner.config import (
     DRIVE_CREDENTIALS_FILE,
+    DRIVE_TOKEN_FILE,
     GEMINI_DAILY_LIMIT,
     GEO_MONTHLY_LIMIT,
     MAX_LAYERS_PER_FILE,
+    PW_PROFILE_DIR,
 )
 from gmap_planner.errors import PipelineError
 from gmap_planner.mymaps import is_logged_in, login
@@ -124,8 +126,38 @@ st.caption(
     "each day a colored layer with numbered pins."
 )
 
+def _dir_has_files(path: str) -> bool:
+    try:
+        return os.path.isdir(path) and any(os.scandir(path))
+    except OSError:
+        return False
+
+
+def render_setup_status() -> None:
+    """One-glance green/red list of the one-time setup items (local use)."""
+    rows = [
+        (bool(get_secret("GOOGLE_API_KEY")), "Gemini API key",
+         "Set GOOGLE_API_KEY in .streamlit/secrets.toml"),
+        (bool(get_secret("GEO_API_KEY")), "Geocoding API key",
+         "Set GEO_API_KEY in .streamlit/secrets.toml"),
+        (_dir_has_files(PW_PROFILE_DIR), "Signed in to Google (My Maps)",
+         "Run login.bat once (only needed to publish maps)"),
+        (os.path.exists(DRIVE_CREDENTIALS_FILE), "Drive credentials.json",
+         "Only needed to share maps — upload it under 'Publish to My Maps'"),
+        (os.path.exists(DRIVE_TOKEN_FILE), "Drive access authorized",
+         "Granted automatically the first time you share a map"),
+    ]
+    for ok, label, hint in rows:
+        if ok:
+            st.markdown(f"✅ {label}")
+        else:
+            st.markdown(f"⚪ {label}  \n<small>{hint}</small>", unsafe_allow_html=True)
+
+
 # --- Sidebar: usage gauges + options --------------------------------------
 with st.sidebar:
+    with st.expander("⚙️ Setup status"):
+        render_setup_status()
     st.header("API usage")
     render_usage_gauges()
     st.divider()

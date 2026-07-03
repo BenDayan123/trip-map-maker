@@ -45,6 +45,20 @@ a `token.json` is cached after first consent. Both are gitignored, as is `.pw-pr
 
 Current model: `gemini-3.1-flash-lite` (set via `GEMINI_MODEL` in `config.py`).
 
+## Deployment (single admin, local Windows)
+
+The app is run by one admin on their own Windows PC — **not** hosted for other users.
+This is deliberate: locally, Playwright drives real Chrome and `credentials.json`,
+`token.json`, `.pw-profile/`, and the API keys all persist on disk (set once), so the
+whole class of cloud problems (ephemeral disk, headless Google login) doesn't apply.
+One-click batch launchers wrap the flow: `setup.bat` (venv + deps + `playwright install
+chromium`), `login.bat` (`python main.py --login`), `run.bat` (auto `git pull --ff-only`
+then `streamlit run`; `run.vbs` runs it with no console), `update.bat` (`git pull` + pip).
+`SETUP.md` is the admin guide. A sidebar **⚙️ Setup status** expander
+(`render_setup_status` in `streamlit_app.py`) shows which one-time items are configured.
+The Streamlit-Cloud publish path (`packages.txt`, `GOOGLE_STORAGE_STATE`) remains in the
+repo but is unused in this local flow.
+
 ## Key design decisions
 
 - **KML over GeoJSON**: Google My Maps reliably imports KML (its native format); GeoJSON import is unreliable.
