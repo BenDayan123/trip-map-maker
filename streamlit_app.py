@@ -122,10 +122,11 @@ def render_usage_gauges() -> None:
         st.caption("📊 API usage metrics not configured.")
         with st.expander("Enable the usage gauges"):
             st.markdown(
-                "Set these secrets (needs the Cloud Monitoring API enabled and a "
-                "service account with `roles/monitoring.viewer`):\n"
+                "Fill the **Usage gauges** fields in the sidebar **🔑 Settings** "
+                "section (needs the Cloud Monitoring API enabled and a service "
+                "account with `roles/monitoring.viewer`):\n"
                 "- `GCP_PROJECT_ID` — the project behind your API keys\n"
-                "- `GCP_SA_JSON` — the service-account JSON (as a string)\n"
+                "- `GCP_SA_JSON` — the service-account JSON\n"
                 "- `GEO_MONTHLY_LIMIT` — your Geocoding quota number"
             )
         return
@@ -175,16 +176,31 @@ def render_setup_status() -> None:
 
 
 def render_settings() -> None:
-    """Let the admin enter/save API keys without editing files (for the exe)."""
+    """Let the admin enter/save keys + settings without editing files (for the exe)."""
     cfg = load_app_config()
     st.caption("Saved on this computer. Needed once.")
     gk = st.text_input("Gemini API key (GOOGLE_API_KEY)", value=cfg.get("GOOGLE_API_KEY", ""),
                        type="password", key="cfg_gemini")
     gek = st.text_input("Geocoding API key (GEO_API_KEY)", value=cfg.get("GEO_API_KEY", ""),
                         type="password", key="cfg_geo")
-    if st.button("Save keys", use_container_width=True):
+
+    st.markdown("**Usage gauges (optional)**")
+    st.caption("Fill these to show the live Geocoding-usage gauge. Needs the Cloud "
+               "Monitoring API enabled and a service account with `roles/monitoring.viewer`.")
+    proj = st.text_input("GCP project id (GCP_PROJECT_ID)", value=cfg.get("GCP_PROJECT_ID", ""),
+                         key="cfg_proj")
+    geo_limit = st.text_input("Monthly Geocoding quota (GEO_MONTHLY_LIMIT)",
+                              value=str(cfg.get("GEO_MONTHLY_LIMIT", "")), key="cfg_geolimit")
+    sa_json = st.text_area("Service-account JSON (GCP_SA_JSON)", value=cfg.get("GCP_SA_JSON", ""),
+                           height=120, key="cfg_sa",
+                           help="Paste the whole downloaded service-account .json here.")
+
+    if st.button("Save settings", use_container_width=True):
         cfg["GOOGLE_API_KEY"] = gk.strip()
         cfg["GEO_API_KEY"] = gek.strip()
+        cfg["GCP_PROJECT_ID"] = proj.strip()
+        cfg["GEO_MONTHLY_LIMIT"] = geo_limit.strip()
+        cfg["GCP_SA_JSON"] = sa_json.strip()
         save_app_config(cfg)
         st.success("Saved. They'll be used on the next run.")
 
