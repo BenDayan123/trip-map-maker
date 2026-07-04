@@ -241,7 +241,7 @@ def _set_kml_on_any_frame(page, kml_path: str, timeout_ms: int = 30000) -> bool:
     import input rather than an unrelated one (which would silently import nothing).
     """
     deadline = time.time() + timeout_ms / 1000
-    tried_upload_tab = False
+    logged_tab = False
     while time.time() < deadline:
         # Prefer the Picker's own frames; fall back to all frames only if none match.
         candidates = _picker_frames(page) or page.frames
@@ -253,19 +253,23 @@ def _set_kml_on_any_frame(page, kml_path: str, timeout_ms: int = 30000) -> bool:
             if inp is not None:
                 inp.set_input_files(kml_path)
                 return True
-        # File input only exists on the Picker's Upload tab — switch to it once.
-        if not tried_upload_tab:
-            tried_upload_tab = True
-            for frame in _picker_frames(page) or page.frames:
-                try:
-                    tab = frame.get_by_text(re.compile(r"upload", re.I)).first
-                    if tab.count():
+        # No input yet — on 2nd+ imports the Picker opens on the Drive/Recent tab
+        # (which now lists earlier uploads), and the file input only exists on the
+        # Upload tab. Keep nudging it to Upload every loop instead of waiting once
+        # for Drive's file list to load; only inside real Picker frames so we don't
+        # click a stray "upload" label elsewhere on the page.
+        for frame in _picker_frames(page):
+            try:
+                tab = frame.get_by_text(re.compile(r"^\s*upload\s*$", re.I)).first
+                if tab.count() and tab.is_visible():
+                    if not logged_tab:
                         _log("clicking the Picker 'Upload' tab")
-                        tab.click(timeout=2000)
-                        break
-                except Exception:
-                    continue
-        page.wait_for_timeout(500)
+                        logged_tab = True
+                    tab.click(timeout=1500)
+                    break
+            except Exception:
+                continue
+        page.wait_for_timeout(250)
     _log(f"no file input found; frames present: {[f.url for f in page.frames]}")
     return False
 
@@ -346,14 +350,15 @@ def _open_new_map(context):
             "Not signed in to Google. Run `python main.py --login` once and sign in."
         )
 
-    page.wait_for_timeout(1500)  # let the home grid render
+    page.wait_for_timeout(800)  # let the home grid render
     _log("clicking 'Create a new map'")
     _click(page, SEL_CREATE_NEW, timeout_ms=20000)
 
     # That opens a dialog whose confirm button is 'Create'. It isn't always shown
-    # (some accounts skip straight to the editor), so treat it as optional.
+    # (some accounts skip straight to the editor), so treat it as optional — keep the
+    # timeout short so accounts that skip it don't pay a long wait every map.
     _log("confirming with 'Create' (if the dialog appears)")
-    if _click(page, SEL_CREATE_CONFIRM, timeout_ms=6000, optional=True):
+    if _click(page, SEL_CREATE_CONFIRM, timeout_ms=2500, optional=True):
         _log("dialog confirmed")
 
     # Now we should be redirected into the editor (URL gains '/edit').
@@ -493,7 +498,7 @@ class MyMapsSession:
         try:
             # Wait for the layer panel (with its 'Import' link) to render.
             editor.wait_for_load_state("domcontentloaded")
-            editor.wait_for_timeout(1500)
+            editor.wait_for_timeout(800)
             _do_import(editor, kml_path)
 
             # Importing triggers the first save, which is when `mid` appears.

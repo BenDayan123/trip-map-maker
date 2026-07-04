@@ -12,11 +12,9 @@ page, followed by Analytics and Setup (the latter holds the API keys + setup
 status that used to live in the sidebar).
 """
 
-import io
 import os
 import sys
 import tempfile
-import zipfile
 
 import streamlit as st
 
@@ -141,14 +139,6 @@ def reveal_in_file_manager(path: str) -> None:
         subprocess.Popen([cmd, path])
     except Exception:
         pass
-
-
-def build_zip(files: list[tuple[str, bytes]]) -> bytes:
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for name, data in files:
-            zf.writestr(name, data)
-    return buf.getvalue()
 
 
 def make_map_page() -> None:
@@ -386,16 +376,6 @@ def make_map_page() -> None:
             st.success(f"Saved to: {folder}")
             reveal_in_file_manager(folder)
 
-        if len(files) > 1:
-            st.download_button(
-                f"⬇️  Download all {len(files)} files (.zip)",
-                data=build_zip(files),
-                file_name=f"{meta['trip_name']}.zip",
-                mime="application/zip",
-                use_container_width=True,
-            )
-            st.caption("…or grab individual day-layers:")
-
         map_results = st.session_state.get("map_results", {})
         if map_results:
             ok = sum(1 for m in map_results.values() if not m["error"])
@@ -408,19 +388,10 @@ def make_map_page() -> None:
             mr = map_results.get(name)
             with st.container(border=True):
                 if mr and not mr["error"]:
-                    info, btn, link = st.columns([3, 1, 1], vertical_alignment="center")
+                    info, link = st.columns([3, 1], vertical_alignment="center")
                 else:
-                    info, btn = st.columns([3, 1], vertical_alignment="center")
-                    link = None
+                    info, link = st.container(), None
                 info.markdown(f"🗺️ **{day_label}**  \n`{name}` · {size_kb:.0f} KB")
-                btn.download_button(
-                    "⬇️ Download",
-                    data=data,
-                    file_name=name,
-                    mime="application/vnd.google-earth.kml+xml",
-                    key=f"dl_{name}",
-                    use_container_width=True,
-                )
                 if link is not None:
                     view_url = (
                         f"https://www.google.com/maps/d/viewer?mid={mr['mid']}"
