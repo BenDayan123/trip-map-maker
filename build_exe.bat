@@ -10,6 +10,7 @@ python -c "import streamlit_desktop_app" 2>nul || python -m pip install streamli
 REM Theme is passed as Streamlit CLI options (config.toml isn't on the frozen
 REM app's config search path), forcing the blue primary color + light base.
 streamlit-desktop-app build streamlit_app.py --name TripMapMaker ^
+  --icon icon.ico ^
   --pyinstaller-options --noconfirm --windowed ^
   --collect-all playwright ^
   --collect-all google ^
