@@ -270,6 +270,20 @@ def _set_kml_on_any_frame(page, kml_path: str, timeout_ms: int = 30000) -> bool:
     return False
 
 
+def _do_import(editor, kml_path: str) -> None:
+    """Click 'Import' on the current layer and set the KML file into the Picker.
+
+    Factored out so it can be run twice: the initial import and a retry when the
+    first attempt lands an empty map. Raises MyMapsError if the file input is never
+    found.
+    """
+    _log("clicking 'Import' on the base layer")
+    _click(editor, SEL_IMPORT, timeout_ms=20000)
+    _log(f"selecting KML file: {kml_path}")
+    if not _set_kml_on_any_frame(editor, kml_path):
+        raise MyMapsError("Could not find the file-upload input in the import dialog.")
+
+
 def _wait_for_mid(page, timeout_ms: int = 60000) -> str | None:
     """Poll the page URL until the map id (`mid`) appears (set once the map saves)."""
     deadline = time.time() + timeout_ms / 1000
@@ -480,12 +494,7 @@ class MyMapsSession:
             # Wait for the layer panel (with its 'Import' link) to render.
             editor.wait_for_load_state("domcontentloaded")
             editor.wait_for_timeout(1500)
-            _log("clicking 'Import' on the base layer")
-            _click(editor, SEL_IMPORT, timeout_ms=20000)
-
-            _log(f"selecting KML file: {kml_path}")
-            if not _set_kml_on_any_frame(editor, kml_path):
-                raise MyMapsError("Could not find the file-upload input in the import dialog.")
+            _do_import(editor, kml_path)
 
             # Importing triggers the first save, which is when `mid` appears.
             _log("file submitted; waiting for the map to save (mid in URL)")
@@ -496,9 +505,15 @@ class MyMapsSession:
 
             # The import runs asynchronously after the file is set; wait until the
             # imported placemarks actually appear before moving on, otherwise the map
-            # can be saved (mid present) while still empty.
+            # can be saved (mid present) while still empty. If it came up empty, retry
+            # the import once — a re-import into the same (already-saved) map is the
+            # cheapest recovery for a dropped first attempt.
             if not _wait_for_import(editor, kml_path):
-                _log("WARNING: no imported features detected; the map may be empty")
+                _log("no features after import — retrying the import once")
+                self._dump_screenshot(editor, kml_path.rsplit(".", 1)[0] + ".empty1.kml")
+                _do_import(editor, kml_path)
+                if not _wait_for_import(editor, kml_path):
+                    _log("WARNING: still no imported features after retry; map may be empty")
 
             _log("setting the map title")
             if not _set_title(editor, title):
