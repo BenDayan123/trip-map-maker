@@ -26,7 +26,6 @@ _PACIFIC = ZoneInfo("America/Los_Angeles")
 _SCOPE = "https://www.googleapis.com/auth/monitoring.read"
 _TIMESERIES_URL = "https://monitoring.googleapis.com/v3/projects/{project}/timeSeries"
 
-GEMINI_SERVICE = "generativelanguage.googleapis.com"
 GEOCODE_SERVICE = "geocoding-backend.googleapis.com"
 
 
@@ -77,13 +76,12 @@ def get_api_usage(
     *,
     project_id: str,
     sa_info: dict,
-    gemini_daily_limit: int,
     geo_monthly_limit: int,
 ) -> dict | None:
-    """Return {'gemini': {...}, 'geocode': {...}} or None on any failure.
+    """Return {'geocode': {...}} or None on any failure.
 
-    Gemini usage is for the current day, Geocoding for the current month (both
-    Pacific, matching Google's quota reset windows).
+    Geocoding usage is for the current month (Pacific, matching Google's quota
+    reset window).
     """
     try:
         creds = service_account.Credentials.from_service_account_info(
@@ -96,12 +94,8 @@ def get_api_usage(
         day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         month_start = day_start.replace(day=1)
 
-        gemini_used = _request_count(project_id, token, GEMINI_SERVICE, day_start, now)
         geo_used = _request_count(project_id, token, GEOCODE_SERVICE, month_start, now)
 
-        return {
-            "gemini": _gauge(gemini_used, gemini_daily_limit),
-            "geocode": _gauge(geo_used, geo_monthly_limit),
-        }
+        return {"geocode": _gauge(geo_used, geo_monthly_limit)}
     except Exception:
         return None

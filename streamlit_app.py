@@ -19,7 +19,6 @@ import streamlit as st
 from gmap_planner.config import (
     DRIVE_CREDENTIALS_FILE,
     DRIVE_TOKEN_FILE,
-    GEMINI_DAILY_LIMIT,
     GEO_MONTHLY_LIMIT,
     MAX_LAYERS_PER_FILE,
     PW_PROFILE_DIR,
@@ -99,7 +98,7 @@ def _gauge_color(pct: float) -> str:
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def _cached_usage(project_id, sa_json, gem_limit, geo_limit):
+def _cached_usage(project_id, sa_json, geo_limit):
     if not project_id or not sa_json:
         return None
     try:
@@ -109,7 +108,6 @@ def _cached_usage(project_id, sa_json, gem_limit, geo_limit):
     return get_api_usage(
         project_id=project_id,
         sa_info=sa_info,
-        gemini_daily_limit=int(gem_limit),
         geo_monthly_limit=int(geo_limit),
     )
 
@@ -118,7 +116,6 @@ def render_usage_gauges() -> None:
     usage = _cached_usage(
         get_secret("GCP_PROJECT_ID"),
         get_secret("GCP_SA_JSON"),
-        get_secret("GEMINI_DAILY_LIMIT") or GEMINI_DAILY_LIMIT,
         get_secret("GEO_MONTHLY_LIMIT") or GEO_MONTHLY_LIMIT,
     )
     if usage is None:
@@ -129,7 +126,7 @@ def render_usage_gauges() -> None:
                 "service account with `roles/monitoring.viewer`):\n"
                 "- `GCP_PROJECT_ID` — the project behind your API keys\n"
                 "- `GCP_SA_JSON` — the service-account JSON (as a string)\n"
-                "- `GEMINI_DAILY_LIMIT`, `GEO_MONTHLY_LIMIT` — your quota numbers"
+                "- `GEO_MONTHLY_LIMIT` — your Geocoding quota number"
             )
         return
 

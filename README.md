@@ -63,7 +63,7 @@ until configured. To enable:
 2. Create a **service account** with role `roles/monitoring.viewer`; download its JSON key.
 3. Find your **project ID** (Google AI Studio shows the project tied to the Gemini key).
 4. Set secrets: `GCP_PROJECT_ID`, `GCP_SA_JSON` (the JSON as a string),
-   `GEMINI_DAILY_LIMIT`, `GEO_MONTHLY_LIMIT` (your real quota numbers).
+   `GEO_MONTHLY_LIMIT` (your real Geocoding quota number).
 
 Notes: Monitoring data lags a few minutes; counts are total API requests
 (≈ quota consumption); windows reset on Pacific time to match Google's quotas.
