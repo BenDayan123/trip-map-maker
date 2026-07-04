@@ -1,0 +1,11 @@
+# Shell scripts must stay LF — CRLF breaks the shebang/execution on macOS/Linux.
+*.sh text eol=lf
+
+# Windows batch/Inno files are CRLF.
+*.bat text eol=crlf
+*.iss text eol=crlf
+
+# Binary assets — never touch line endings.
+*.ico binary
+*.icns binary
+*.png binary

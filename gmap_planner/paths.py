@@ -18,9 +18,17 @@ def data_dir() -> str:
     if override:
         base = override
     elif getattr(sys, "frozen", False):
-        # Packaged exe: use a real per-user folder, not the temp unpack dir.
-        root = os.environ.get("APPDATA") or os.path.expanduser("~")
-        base = os.path.join(root, APP_NAME)
+        # Packaged app: use the OS's per-user data folder, not the temp unpack dir.
+        if sys.platform == "darwin":
+            base = os.path.join(
+                os.path.expanduser("~/Library/Application Support"), APP_NAME
+            )
+        elif sys.platform.startswith("win"):
+            root = os.environ.get("APPDATA") or os.path.expanduser("~")
+            base = os.path.join(root, APP_NAME)
+        else:  # Linux/other
+            root = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
+            base = os.path.join(root, APP_NAME)
     else:
         # Local/dev run: the project directory, matching the original relative paths.
         base = os.getcwd()
