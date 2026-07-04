@@ -60,18 +60,23 @@ def render_settings() -> None:
                "Monitoring API enabled and a service account with `roles/monitoring.viewer`.")
     proj = st.text_input("GCP project id (GCP_PROJECT_ID)", value=cfg.get("GCP_PROJECT_ID", ""),
                          key="cfg_proj")
-    geo_limit = st.text_input("Monthly Geocoding quota (GEO_MONTHLY_LIMIT)",
-                              value=str(cfg.get("GEO_MONTHLY_LIMIT", "")), key="cfg_geolimit")
     sa_json = st.text_area("Service-account JSON (GCP_SA_JSON)", value=cfg.get("GCP_SA_JSON", ""),
                            height=120, key="cfg_sa",
                            help="Paste the whole downloaded service-account .json here.")
+
+    st.markdown("**Analytics (optional)**")
+    st.caption("The Google Sheet the publish log is written to and read from. "
+               "Share the Sheet with the `GCP_SA_JSON` service-account email and "
+               "enable the Google Sheets API.")
+    sheet_id = st.text_input("Analytics Sheet id or URL (ANALYTICS_SHEET_ID)",
+                             value=cfg.get("ANALYTICS_SHEET_ID", ""), key="cfg_sheet")
 
     if st.button("Save settings", use_container_width=True):
         cfg["GOOGLE_API_KEY"] = gk.strip()
         cfg["GEO_API_KEY"] = gek.strip()
         cfg["GCP_PROJECT_ID"] = proj.strip()
-        cfg["GEO_MONTHLY_LIMIT"] = geo_limit.strip()
         cfg["GCP_SA_JSON"] = sa_json.strip()
+        cfg["ANALYTICS_SHEET_ID"] = sheet_id.strip()
         save_app_config(cfg)
         st.success("Saved. They'll be used on the next run.")
 

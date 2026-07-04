@@ -94,8 +94,7 @@ def render_usage_gauges() -> None:
                 "(needs the Cloud Monitoring API enabled and a service "
                 "account with `roles/monitoring.viewer`):\n"
                 "- `GCP_PROJECT_ID` — the project behind your API keys\n"
-                "- `GCP_SA_JSON` — the service-account JSON\n"
-                "- `GEO_MONTHLY_LIMIT` — your Geocoding quota number"
+                "- `GCP_SA_JSON` — the service-account JSON"
             )
         return
 

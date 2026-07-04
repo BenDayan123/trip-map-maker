@@ -30,15 +30,27 @@ _SCOPES = [
 
 
 def _secret(name: str) -> str | None:
-    """Value from Streamlit secrets first, then environment variables."""
+    """Value from Streamlit secrets, then env, then the saved config.json.
+
+    The config.json fallback is what makes the packaged exe work: it has no
+    secrets.toml, so the admin enters these on the Setup page instead.
+    """
     try:
         import streamlit as st
 
         if name in st.secrets:
             return st.secrets[name]
     except Exception:
-        pass  # no secrets.toml / streamlit not running — fall back to env
-    return os.environ.get(name)
+        pass  # no secrets.toml / streamlit not running — fall back below
+    val = os.environ.get(name)
+    if val:
+        return val
+    try:
+        from gmap_planner.appconfig import load_app_config
+
+        return load_app_config().get(name)
+    except Exception:
+        return None
 
 
 def _sheet_id() -> str | None:
