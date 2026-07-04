@@ -7,6 +7,8 @@ if exist ".venv\Scripts\activate.bat" call ".venv\Scripts\activate.bat"
 
 python -c "import streamlit_desktop_app" 2>nul || python -m pip install streamlit-desktop-app
 
+REM Theme is passed as Streamlit CLI options (config.toml isn't on the frozen
+REM app's config search path), forcing the blue primary color + light base.
 streamlit-desktop-app build streamlit_app.py --name TripMapMaker ^
   --pyinstaller-options --noconfirm --windowed ^
   --collect-all playwright ^
@@ -15,7 +17,8 @@ streamlit-desktop-app build streamlit_app.py --name TripMapMaker ^
   --collect-all google_auth_oauthlib ^
   --collect-all gspread ^
   --add-data "gmap_planner;gmap_planner" ^
-  --add-data "pages;pages"
+  --add-data "pages;pages" ^
+  --streamlit-options --theme.base=light "--theme.primaryColor=#2563EB"
 
 REM Trim ~90MB of unused Google API discovery docs; keep only Drive (the only
 REM API this app calls via googleapiclient). Safe: build('drive','v3') reads these.
