@@ -8,7 +8,7 @@ if exist ".venv\Scripts\activate.bat" call ".venv\Scripts\activate.bat"
 python -c "import streamlit_desktop_app" 2>nul || python -m pip install streamlit-desktop-app
 
 streamlit-desktop-app build streamlit_app.py --name TripMapMaker ^
-  --pyinstaller-options --noconfirm ^
+  --pyinstaller-options --noconfirm --windowed ^
   --collect-all playwright ^
   --collect-all google ^
   --collect-all googleapiclient ^
