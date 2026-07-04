@@ -216,17 +216,36 @@ def _click(scope, pattern, *, timeout_ms: int = 15000, optional: bool = False) -
     raise MyMapsError(f"Could not find a clickable element matching {pattern.pattern!r}.")
 
 
+def _picker_frames(page):
+    """Frames that belong to the Google Picker (where the real upload input lives).
+
+    Preferring these avoids setting the KML on some unrelated `input[type=file]`
+    that happens to exist elsewhere on the editor page — a wrong-input pick imports
+    nothing, leaving the map empty.
+    """
+    out = []
+    for frame in page.frames:
+        u = (frame.url or "").lower()
+        if "picker" in u or "docs.google.com" in u or "drive.google.com" in u:
+            out.append(frame)
+    return out
+
+
 def _set_kml_on_any_frame(page, kml_path: str, timeout_ms: int = 30000) -> bool:
-    """Find the (often hidden) <input type=file> across all frames and set the KML.
+    """Find the (often hidden) <input type=file> in the Picker and set the KML.
 
     Setting the file input directly is far more robust than clicking the Google
     Picker "Browse" button, which lives in a cross-origin iframe. If the Picker
-    opens on the Drive tab (no file input present), click its "Upload" tab once.
+    opens on the Drive tab (no file input present), click its "Upload" tab first.
+    The Picker frames are preferred over every other frame so the file lands on the
+    import input rather than an unrelated one (which would silently import nothing).
     """
     deadline = time.time() + timeout_ms / 1000
     tried_upload_tab = False
     while time.time() < deadline:
-        for frame in page.frames:
+        # Prefer the Picker's own frames; fall back to all frames only if none match.
+        candidates = _picker_frames(page) or page.frames
+        for frame in candidates:
             try:
                 inp = frame.query_selector("input[type=file]")
             except Exception:
@@ -237,7 +256,7 @@ def _set_kml_on_any_frame(page, kml_path: str, timeout_ms: int = 30000) -> bool:
         # File input only exists on the Picker's Upload tab — switch to it once.
         if not tried_upload_tab:
             tried_upload_tab = True
-            for frame in page.frames:
+            for frame in _picker_frames(page) or page.frames:
                 try:
                     tab = frame.get_by_text(re.compile(r"upload", re.I)).first
                     if tab.count():
@@ -260,6 +279,45 @@ def _wait_for_mid(page, timeout_ms: int = 60000) -> str | None:
             return m.group(1)
         page.wait_for_timeout(500)
     return None
+
+
+def _first_placemark_name(kml_path: str) -> str | None:
+    """First placemark name in the KML — used to confirm the import actually landed."""
+    try:
+        import xml.etree.ElementTree as ET
+
+        ns = "{http://www.opengis.net/kml/2.2}"
+        tree = ET.parse(kml_path)
+        for pm in tree.iter(f"{ns}Placemark"):
+            name_el = pm.find(f"{ns}name")
+            if name_el is not None and (name_el.text or "").strip():
+                return name_el.text.strip()
+    except Exception:
+        return None
+    return None
+
+
+def _wait_for_import(page, kml_path: str, timeout_ms: int = 40000) -> bool:
+    """Wait until the imported features render in the editor legend.
+
+    The import runs asynchronously after the file input is set; `mid` can appear
+    (map saved) while the placemarks are still loading — or never load if the import
+    silently failed. We verify by waiting for the KML's first placemark name to show
+    up on the page. If we can't read a name, fall back to a short settle.
+    """
+    name = _first_placemark_name(kml_path)
+    if not name:
+        page.wait_for_timeout(3000)
+        return True
+    deadline = time.time() + timeout_ms / 1000
+    while time.time() < deadline:
+        try:
+            if page.get_by_text(name, exact=False).first.is_visible():
+                return True
+        except Exception:
+            pass
+        page.wait_for_timeout(500)
+    return False
 
 
 def _open_new_map(context):
@@ -436,6 +494,12 @@ class MyMapsSession:
                 raise MyMapsError("Timed out waiting for the map to be created (no mid in URL).")
             _log(f"map created: mid={mid}")
 
+            # The import runs asynchronously after the file is set; wait until the
+            # imported placemarks actually appear before moving on, otherwise the map
+            # can be saved (mid present) while still empty.
+            if not _wait_for_import(editor, kml_path):
+                _log("WARNING: no imported features detected; the map may be empty")
+
             _log("setting the map title")
             if not _set_title(editor, title):
                 _log("WARNING: map left as 'Untitled map' (title step failed)")
@@ -447,6 +511,15 @@ class MyMapsSession:
         except Exception as e:
             self._dump_screenshot(editor, kml_path)
             raise MyMapsError(f"My Maps automation failed for {kml_path}: {e}") from e
+        finally:
+            # Close this editor tab so the next map is created in a clean context —
+            # leaving prior My Maps editors (each with a live Google Picker/OAuth
+            # session) open can make a later import land on the wrong map or no-op,
+            # leaving those maps empty.
+            try:
+                editor.close()
+            except Exception:
+                pass
 
     @staticmethod
     def _dump_screenshot(page, kml_path: str) -> None:

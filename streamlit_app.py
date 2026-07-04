@@ -14,6 +14,7 @@ status that used to live in the sidebar).
 
 import io
 import os
+import sys
 import tempfile
 import zipfile
 
@@ -105,6 +106,41 @@ def render_usage_gauges() -> None:
                  _gauge_color(geo["pct"])),
         unsafe_allow_html=True,
     )
+
+
+def save_files_to_disk(trip_name: str, files: list[tuple[str, bytes]]) -> str:
+    """Write the KML files to a folder on this computer and return its path.
+
+    The packaged app runs inside a pywebview window whose embedded browser doesn't
+    handle Streamlit's blob downloads, so `st.download_button` silently does nothing
+    there. Writing straight to disk (this is a local, single-machine app) is reliable.
+    Files land in the user's Downloads folder under a per-trip subfolder.
+    """
+    from gmap_planner.kml import sanitize_folder_name
+
+    base = os.path.join(os.path.expanduser("~"), "Downloads")
+    if not os.path.isdir(base):
+        base = os.path.expanduser("~")
+    folder = os.path.join(base, sanitize_folder_name(trip_name))
+    os.makedirs(folder, exist_ok=True)
+    for name, data in files:
+        with open(os.path.join(folder, name), "wb") as f:
+            f.write(data)
+    return folder
+
+
+def reveal_in_file_manager(path: str) -> None:
+    """Open the given folder in the OS file manager (best-effort)."""
+    try:
+        opener = getattr(os, "startfile", None)
+        if opener is not None:  # Windows
+            opener(path)
+            return
+        import subprocess
+        cmd = "open" if sys.platform == "darwin" else "xdg-open"
+        subprocess.Popen([cmd, path])
+    except Exception:
+        pass
 
 
 def build_zip(files: list[tuple[str, bytes]]) -> bytes:
@@ -338,13 +374,24 @@ def make_map_page() -> None:
         c3.metric("Exact coords", f"{meta['corrected']}/{meta['corrected'] + meta['fallback']}")
 
         st.subheader("Download")
+        # Primary path: save straight to disk. The packaged app runs in a pywebview
+        # window whose embedded browser ignores Streamlit's blob downloads, so the
+        # download buttons below do nothing there — this button always works.
+        if st.button(
+            f"💾 Save {len(files)} file(s) to my computer",
+            type="primary",
+            use_container_width=True,
+        ):
+            folder = save_files_to_disk(meta["trip_name"], files)
+            st.success(f"Saved to: {folder}")
+            reveal_in_file_manager(folder)
+
         if len(files) > 1:
             st.download_button(
                 f"⬇️  Download all {len(files)} files (.zip)",
                 data=build_zip(files),
                 file_name=f"{meta['trip_name']}.zip",
                 mime="application/zip",
-                type="primary",
                 use_container_width=True,
             )
             st.caption("…or grab individual day-layers:")
