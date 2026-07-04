@@ -1,8 +1,7 @@
-"""Admin-only Analytics page: created-map log from the Google Sheet.
+"""Analytics page: created-map log from the Google Sheet.
 
 Streamlit auto-discovers files under ``pages/`` and adds them to the sidebar nav;
-``streamlit_app.py`` stays the default "Create map" page. Gated behind an
-``ADMIN_PASSWORD`` secret so only the admin sees the log.
+``streamlit_app.py`` stays the default "Create map" page. Open to read (no gate).
 """
 
 from datetime import datetime, timedelta
@@ -10,33 +9,10 @@ from datetime import datetime, timedelta
 import pandas as pd
 import streamlit as st
 
-from gmap_planner.analytics import _secret, _sheet_id, _worksheet, fetch_rows
+from gmap_planner.analytics import _sheet_id, _worksheet, fetch_rows
 
 st.set_page_config(page_title="Analytics", page_icon="📊", layout="centered")
 st.title("📊 Analytics")
-
-
-def require_admin() -> None:
-    """Block the page unless the admin password matches. Stops the run otherwise."""
-    password = _secret("ADMIN_PASSWORD")
-    if not password:
-        st.warning(
-            "Analytics is locked but no `ADMIN_PASSWORD` secret is set. Add one to "
-            "`st.secrets` to open this page."
-        )
-        st.stop()
-    if st.session_state.get("is_admin"):
-        return
-    entered = st.text_input("Admin password", type="password")
-    if not entered:
-        st.stop()
-    if entered != password:
-        st.error("Wrong password.")
-        st.stop()
-    st.session_state["is_admin"] = True
-
-
-require_admin()
 
 if _worksheet() is None:
     st.error(

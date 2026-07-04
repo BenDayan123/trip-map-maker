@@ -9,7 +9,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Callable
 
-from .config import PW_PROFILE_DIR
+from .config import DRIVE_CREDENTIALS_FILE, DRIVE_TOKEN_FILE, PW_PROFILE_DIR
 from .drive_share import get_drive_service, share_map
 from .mymaps import MyMapsSession
 
@@ -41,8 +41,8 @@ def publish_kml_files(
     role: str = "reader",
     profile_dir: str = PW_PROFILE_DIR,
     headless: bool = True,
-    credentials_path: str = "credentials.json",
-    token_path: str = "token.json",
+    credentials_path: str = DRIVE_CREDENTIALS_FILE,
+    token_path: str = DRIVE_TOKEN_FILE,
     notify: bool = True,
     storage_state=None,
     progress: ProgressFn | None = None,
