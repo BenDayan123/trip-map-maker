@@ -25,8 +25,7 @@ from . import __version__
 from .config import GITHUB_REPO
 
 _API_LATEST = "https://api.github.com/repos/{repo}/releases/latest"
-_UA = "TripMapMaker-Updater"
-
+_UA = "trip-map-maker"
 
 @dataclass
 class UpdateInfo:
@@ -40,6 +39,11 @@ class UpdateInfo:
     @property
     def has_update(self) -> bool:
         return _is_newer(self.latest, self.current)
+
+    @property
+    def has_asset(self) -> bool:
+        """Whether the latest release actually ships an installer for this OS."""
+        return bool(self.asset_url)
 
 
 def current_version() -> str:
@@ -98,9 +102,10 @@ def check_for_update(repo: str = GITHUB_REPO, timeout: int = 8) -> UpdateInfo | 
         if r.status_code != 200:
             return None
         data = r.json()
-        asset = _platform_asset(data.get("assets") or [])
-        if not asset:
-            return None
+        # Reachable → always return info. A missing OS asset is a *different*
+        # state from "unreachable" (None), so the UI can say so honestly instead
+        # of claiming you're offline. `has_asset` reports whether a download exists.
+        asset = _platform_asset(data.get("assets") or []) or {}
         return UpdateInfo(
             current=current_version(),
             latest=(data.get("tag_name") or "").lstrip("vV"),

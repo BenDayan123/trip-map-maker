@@ -64,6 +64,13 @@ def run_update(info) -> None:
             "pulling the latest code and rebuilding, not through here."
         )
         return
+    if not getattr(info, "has_asset", False):
+        st.error(
+            f"v{info.latest} is published but has no installer for your system "
+            "yet — the release is missing its download. Try again once the build "
+            "has attached it."
+        )
+        return
     from gmap_planner.updater import apply_update, download_asset
 
     try:

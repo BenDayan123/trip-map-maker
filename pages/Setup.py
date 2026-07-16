@@ -101,7 +101,12 @@ def render_updates() -> None:
         if info.notes:
             with st.expander("What's new"):
                 st.markdown(info.notes)
-        if st.button("Update now", type="primary", key="update_now_setup"):
+        if not info.has_asset:
+            st.warning(
+                "This release has no installer attached for your system yet — "
+                "nothing to download. It'll be installable once the build finishes."
+            )
+        elif st.button("Update now", type="primary", key="update_now_setup"):
             run_update(info)
     else:
         st.success("You're on the latest version.")
