@@ -1,0 +1,72 @@
+name: Build Windows installer
+
+# Builds TripMapMaker.exe and the Inno Setup installer on a Windows runner.
+# Run by hand (Actions -> Run workflow), or push a v* tag to also publish the
+# installer to the matching GitHub Release (alongside the macOS .dmg files).
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write # needed for the release step on tags
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt streamlit-desktop-app
+
+      - name: Freeze the app (PyInstaller via streamlit-desktop-app)
+        run: |
+          streamlit-desktop-app build streamlit_app.py --name TripMapMaker \
+            --icon icon.ico \
+            --pyinstaller-options --noconfirm --windowed \
+              --collect-all playwright \
+              --collect-all google \
+              --collect-all googleapiclient \
+              --collect-all google_auth_oauthlib \
+              --collect-all gspread \
+              --add-data "gmap_planner;gmap_planner" \
+              --add-data "pages;pages" \
+            --streamlit-options --theme.base=light "--theme.primaryColor=#2563EB"
+
+      - name: Trim unused Google API discovery docs (~90MB)
+        run: |
+          DOCS="dist/TripMapMaker/_internal/googleapiclient/discovery_cache/documents"
+          if [ -d "$DOCS" ]; then
+            find "$DOCS" -type f -name '*.json' ! -name 'drive.v2.json' ! -name 'drive.v3.json' -delete
+          fi
+
+      - name: Build the installer (Inno Setup)
+        run: |
+          choco install innosetup -y --no-progress
+          ISCC="/c/Program Files (x86)/Inno Setup 6/ISCC.exe"
+          "$ISCC" installer.iss
+          mv installer/TripMapMaker-Setup.exe TripMapMaker-Windows-Setup.exe
+
+      - name: Upload the installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: TripMapMaker-Windows-Setup
+          path: TripMapMaker-Windows-Setup.exe
+          if-no-files-found: error
+
+      - name: Attach to the release (tags only)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: TripMapMaker-Windows-Setup.exe
