@@ -4,7 +4,7 @@
 
 #define AppName "Trip Map Maker"
 #define AppExe "TripMapMaker.exe"
-#define AppVersion "1.0.0"
+#define AppVersion "1.0.1"
 #define AppPublisher "Trip Map Maker"
 
 [Setup]
