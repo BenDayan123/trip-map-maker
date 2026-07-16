@@ -1,8 +1,12 @@
 name: Build macOS app
 
-# Builds TripMapMaker.app + .dmg on GitHub's macOS runners, so you don't need a
+# Builds TripMapMaker.app + .dmg on GitHub's macOS runner, so you don't need a
 # Mac. Run it by hand (Actions tab -> Run workflow), or push a v* tag to also
-# publish the .dmg files to a GitHub Release.
+# publish the .dmg to a GitHub Release.
+#
+# Apple Silicon (arm64) only: it covers every Mac since late 2020 (M1+), and the
+# hosted Intel (macos-13) runner is chronically unavailable — it queued 1h+ and
+# never allocated. Re-add an Intel matrix leg only if you truly need it.
 on:
   workflow_dispatch:
   push:
@@ -14,16 +18,8 @@ permissions:
 
 jobs:
   build:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-14 # Apple Silicon
-            arch: arm64
-          - os: macos-13 # Intel
-            arch: x86_64
-    runs-on: ${{ matrix.os }}
-    name: build (${{ matrix.arch }})
+    runs-on: macos-14 # Apple Silicon
+    name: build (arm64)
     steps:
       - uses: actions/checkout@v4
 
@@ -41,17 +37,17 @@ jobs:
           chmod +x build_app.sh build_dmg.sh
           ./build_app.sh
           ./build_dmg.sh
-          mv TripMapMaker.dmg "TripMapMaker-macos-${{ matrix.arch }}.dmg"
+          mv TripMapMaker.dmg "TripMapMaker-macos-arm64.dmg"
 
       - name: Upload the installer
         uses: actions/upload-artifact@v4
         with:
-          name: TripMapMaker-macos-${{ matrix.arch }}
-          path: TripMapMaker-macos-${{ matrix.arch }}.dmg
+          name: TripMapMaker-macos-arm64
+          path: TripMapMaker-macos-arm64.dmg
           if-no-files-found: error
 
       - name: Attach to the release (tags only)
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: TripMapMaker-macos-${{ matrix.arch }}.dmg
+          files: TripMapMaker-macos-arm64.dmg
