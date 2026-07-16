@@ -18,7 +18,7 @@ import tempfile
 
 import streamlit as st
 
-from gmap_planner.appconfig import get_secret
+from gmap_planner.appconfig import cached_update_check, get_secret, run_update
 from gmap_planner.config import (
     DRIVE_CREDENTIALS_FILE,
     GEO_MONTHLY_LIMIT,
@@ -141,9 +141,24 @@ def reveal_in_file_manager(path: str) -> None:
         pass
 
 
+def render_update_banner() -> None:
+    """Auto-check on launch: show an update bar if a newer release exists."""
+    try:
+        info = cached_update_check()
+    except Exception:
+        return
+    if not info or not info.has_update:
+        return
+    msg, act = st.columns([4, 1], vertical_alignment="center")
+    msg.info(f"🔄 Update available: **v{info.latest}** (you have v{info.current}).")
+    if act.button("Update now", use_container_width=True, key="update_now_banner"):
+        run_update(info)
+
+
 def make_map_page() -> None:
     """The main "Make Map" page: upload an itinerary, generate KML, optionally publish."""
     # --- Header -----------------------------------------------------------
+    render_update_banner()
     st.title("🗺️ Trip Map Maker")
     st.caption(
         "Upload a travel itinerary (PDF or TXT) and get Google My Maps KML files — "

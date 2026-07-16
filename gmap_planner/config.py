@@ -1,5 +1,8 @@
 """Shared constants and configuration."""
 
+# GitHub repo the in-app updater checks for new releases (owner/name).
+GITHUB_REPO = "BenDayan123/trip-map-maker"
+
 GEMINI_MODEL = "gemini-3.1-flash-lite"
 # GEMINI_MODEL = "gemini-3.5-flash"
 

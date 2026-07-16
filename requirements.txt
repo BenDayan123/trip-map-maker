@@ -8,3 +8,5 @@ google-api-python-client>=2.0
 google-auth-oauthlib>=1.0
 # Analytics log (Google Sheet)
 gspread>=6.0
+# In-app updater (GitHub Releases) — also pulled transitively by google-auth
+requests>=2.28

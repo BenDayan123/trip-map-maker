@@ -6,6 +6,7 @@ import them without executing the app script at import time.
 
 import json
 import os
+import sys
 
 import streamlit as st
 
@@ -42,3 +43,44 @@ def get_secret(name: str) -> str | None:
     except Exception:
         pass  # no secrets.toml present (e.g. packaged exe) — fall back below
     return os.environ.get(name) or load_app_config().get(name)
+
+
+# --- In-app updater (GitHub Releases) -------------------------------------
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def cached_update_check():
+    """Latest-release check, cached for an hour so app reruns/launches don't
+    hammer the GitHub API. Returns an UpdateInfo or None (offline/failure)."""
+    from gmap_planner.updater import check_for_update
+
+    return check_for_update()
+
+
+def run_update(info) -> None:
+    """Download the release installer and launch it (shared by the banner + Setup)."""
+    if not getattr(sys, "frozen", False):
+        st.warning(
+            "You're running from source, not the packaged app — update by "
+            "pulling the latest code and rebuilding, not through here."
+        )
+        return
+    from gmap_planner.updater import apply_update, download_asset
+
+    try:
+        bar = st.progress(0.0, text=f"Downloading {info.asset_name}…")
+        path = download_asset(
+            info.asset_url, info.asset_name, progress=lambda f: bar.progress(f)
+        )
+        bar.progress(1.0, text="Starting the installer…")
+        apply_update(path)
+        if sys.platform == "darwin":
+            st.success(
+                "Downloaded. The disk image opened — drag **Trip Map Maker** into "
+                "Applications, replacing the old one, then reopen it."
+            )
+        else:
+            st.success(
+                "Updating… the app will close and reopen on the new version."
+            )
+    except Exception as e:
+        st.error(f"Update failed: {e}")

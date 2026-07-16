@@ -25,6 +25,11 @@ WizardStyle=modern
 ArchitecturesInstallIn64BitMode=x64compatible
 UninstallDisplayIcon={app}\{#AppExe}
 UninstallDisplayName={#AppName}
+; In-app self-update runs this installer with /SILENT /CLOSEAPPLICATIONS
+; /RESTARTAPPLICATIONS. Restart Manager then closes the running app, replaces
+; its files, and relaunches it — so an update needs no manual reinstall.
+CloseApplications=yes
+RestartApplications=yes
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional icons:"

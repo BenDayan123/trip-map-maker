@@ -7,12 +7,19 @@ import os
 
 import streamlit as st
 
-from gmap_planner.appconfig import get_secret, load_app_config, save_app_config
+from gmap_planner.appconfig import (
+    cached_update_check,
+    get_secret,
+    load_app_config,
+    run_update,
+    save_app_config,
+)
 from gmap_planner.config import (
     DRIVE_CREDENTIALS_FILE,
     DRIVE_TOKEN_FILE,
     PW_PROFILE_DIR,
 )
+from gmap_planner.updater import current_version
 
 st.set_page_config(page_title="Setup", page_icon="⚙️", layout="centered")
 st.title("⚙️ Setup")
@@ -81,8 +88,32 @@ def render_settings() -> None:
         st.success("Saved. They'll be used on the next run.")
 
 
+def render_updates() -> None:
+    """Current version + a manual 'Check for updates' (installs from GitHub Releases)."""
+    st.caption(f"Current version: **v{current_version()}**")
+    if st.button("Check for updates"):
+        cached_update_check.clear()  # force a fresh GitHub query, bypass the 1h cache
+    info = cached_update_check()
+    if info is None:
+        st.caption("Couldn't check right now — offline, or GitHub is unreachable.")
+    elif info.has_update:
+        st.info(f"🔄 Update available: **v{info.latest}** (you have v{info.current}).")
+        if info.notes:
+            with st.expander("What's new"):
+                st.markdown(info.notes)
+        if st.button("Update now", type="primary", key="update_now_setup"):
+            run_update(info)
+    else:
+        st.success("You're on the latest version.")
+
+
 st.subheader("🔑 Settings (API keys)")
 render_settings()
+
+st.divider()
+
+st.subheader("🔄 Updates")
+render_updates()
 
 st.divider()
 
