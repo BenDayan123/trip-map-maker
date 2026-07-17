@@ -3,16 +3,21 @@
 Moved out of the sidebar into its own page (listed under Analytics in the nav).
 """
 
+import json
 import os
 
 import streamlit as st
 
 from gmap_planner.appconfig import (
+    apply_setup_bundle,
+    build_setup_bundle,
     cached_update_check,
     get_secret,
     load_app_config,
+    reveal_in_file_manager,
     run_update,
     save_app_config,
+    save_setup_bundle_to_disk,
 )
 from gmap_planner.config import (
     DRIVE_CREDENTIALS_FILE,
@@ -23,6 +28,52 @@ from gmap_planner.updater import current_version
 
 st.set_page_config(page_title="Setup", page_icon="⚙️", layout="centered")
 st.title("⚙️ Setup")
+
+
+_EXAMPLE_BUNDLE = """{
+  "GOOGLE_API_KEY": "your-gemini-api-key",
+  "GEO_API_KEY": "your-geocoding-api-key",
+  "GCP_PROJECT_ID": "your-gcp-project-id",
+  "ANALYTICS_SHEET_ID": "your-sheet-id-or-url",
+  "GCP_SA_JSON": { "type": "service_account", "project_id": "...", "private_key": "..." },
+  "credentials": { "installed": { "client_id": "...", "client_secret": "..." } }
+}"""
+
+
+def render_one_file_setup() -> None:
+    """Import/export the whole setup (keys + service-account + credentials.json) as one file."""
+    st.caption(
+        "Load your whole setup from a single JSON file — every API key, the "
+        "service-account JSON, and the Drive `credentials.json`. Any key not in "
+        "the file keeps its current value."
+    )
+    up = st.file_uploader("Setup file (.json)", type=["json"], key="setup_bundle")
+    if up is not None:
+        try:
+            bundle = json.loads(up.getvalue().decode("utf-8"))
+            if not isinstance(bundle, dict):
+                raise ValueError("the file must contain a JSON object")
+        except Exception as e:
+            st.error(f"Not a valid setup file: {e}")
+        else:
+            if st.button("Apply this file", type="primary", use_container_width=True):
+                applied = apply_setup_bundle(bundle)
+                if applied:
+                    st.success("Applied: " + ", ".join(applied) + ". Used on the next run.")
+                else:
+                    st.warning("Nothing applied — no recognized keys in the file.")
+
+    with st.expander("Export current setup / see the file format"):
+        st.caption(
+            "Save everything you've configured to one file — a backup, or to copy "
+            "the setup to another computer. **Contains secrets, keep it private.**"
+        )
+        if st.button("💾 Save my setup to a file", use_container_width=True):
+            path = save_setup_bundle_to_disk()
+            st.success(f"Saved to: {path}")
+            reveal_in_file_manager(path)
+        st.markdown("**Format** — include only the keys you want to set:")
+        st.code(_EXAMPLE_BUNDLE, language="json")
 
 
 def _dir_has_files(path: str) -> bool:
@@ -112,7 +163,13 @@ def render_updates() -> None:
         st.success("You're on the latest version.")
 
 
+st.subheader("📦 One-file setup")
+render_one_file_setup()
+
+st.divider()
+
 st.subheader("🔑 Settings (API keys)")
+st.caption("Or set individual values by hand.")
 render_settings()
 
 st.divider()

@@ -31,6 +31,122 @@ def save_app_config(cfg: dict) -> None:
         json.dump(cfg, f, indent=2)
 
 
+# Config keys stored in config.json (the sidebar/Setup fields).
+SETUP_KEYS = [
+    "GOOGLE_API_KEY",
+    "GEO_API_KEY",
+    "GCP_PROJECT_ID",
+    "GCP_SA_JSON",
+    "ANALYTICS_SHEET_ID",
+]
+# Bundle keys that map to the Drive OAuth client file (credentials.json), not config.json.
+_CRED_ALIASES = ("credentials", "credentials.json", "DRIVE_CREDENTIALS")
+
+
+def _as_text(v) -> str | None:
+    """A bundle value as text: JSON objects are re-serialized, scalars stringified."""
+    if v is None:
+        return None
+    if isinstance(v, (dict, list)):
+        return json.dumps(v, ensure_ascii=False)
+    return str(v)
+
+
+def apply_setup_bundle(bundle: dict) -> list[str]:
+    """Merge a one-file setup bundle into config.json + credentials.json.
+
+    Only keys present (and non-empty) in the bundle are written; anything missing
+    keeps its current value. `GCP_SA_JSON` and `credentials` accept either a JSON
+    object or a JSON string. Returns the list of fields actually applied.
+    """
+    from gmap_planner.config import DRIVE_CREDENTIALS_FILE
+
+    applied: list[str] = []
+    cfg = load_app_config()
+    for key in SETUP_KEYS:
+        if key not in bundle:
+            continue
+        val = _as_text(bundle[key])
+        if val is None or not val.strip():
+            continue  # present but empty → keep current value
+        cfg[key] = val.strip()
+        applied.append(key)
+    save_app_config(cfg)
+
+    # Drive OAuth client credentials.json lives as a file, not a config key.
+    cred = next((bundle[k] for k in _CRED_ALIASES if bundle.get(k)), None)
+    if cred is not None:
+        text = _as_text(cred)
+        try:
+            json.loads(text)  # validate it's real JSON before writing
+            with open(DRIVE_CREDENTIALS_FILE, "w", encoding="utf-8") as f:
+                f.write(text)
+            applied.append("credentials.json")
+        except Exception:
+            pass  # not valid JSON — skip rather than corrupt the file
+
+    return applied
+
+
+def build_setup_bundle() -> dict:
+    """Assemble the current setup into one dict for export (secrets included)."""
+    from gmap_planner.config import DRIVE_CREDENTIALS_FILE
+
+    cfg = load_app_config()
+    bundle: dict = {}
+    for key in SETUP_KEYS:
+        v = cfg.get(key)
+        if not v:
+            continue
+        if key == "GCP_SA_JSON":
+            try:
+                bundle[key] = json.loads(v)  # embed as an object for readability
+            except Exception:
+                bundle[key] = v
+        else:
+            bundle[key] = v
+    if os.path.exists(DRIVE_CREDENTIALS_FILE):
+        try:
+            with open(DRIVE_CREDENTIALS_FILE, encoding="utf-8") as f:
+                bundle["credentials"] = json.load(f)
+        except Exception:
+            pass
+    return bundle
+
+
+def _downloads_dir() -> str:
+    d = os.path.join(os.path.expanduser("~"), "Downloads")
+    return d if os.path.isdir(d) else os.path.expanduser("~")
+
+
+def save_setup_bundle_to_disk() -> str:
+    """Write the current setup to a JSON file on disk and return its path.
+
+    Used instead of a download button because the packaged pywebview app ignores
+    Streamlit's blob downloads.
+    """
+    path = os.path.join(_downloads_dir(), "trip-map-maker-setup.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(build_setup_bundle(), f, indent=2, ensure_ascii=False)
+    return path
+
+
+def reveal_in_file_manager(path: str) -> None:
+    """Open the folder containing `path` in the OS file manager (best-effort)."""
+    folder = path if os.path.isdir(path) else os.path.dirname(path)
+    try:
+        opener = getattr(os, "startfile", None)
+        if opener is not None:  # Windows
+            opener(folder)
+            return
+        import subprocess
+
+        cmd = "open" if sys.platform == "darwin" else "xdg-open"
+        subprocess.Popen([cmd, folder])
+    except Exception:
+        pass
+
+
 def get_secret(name: str) -> str | None:
     """Setting resolved from Streamlit secrets, then env, then the saved config.json.
 
