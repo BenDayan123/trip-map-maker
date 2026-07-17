@@ -88,65 +88,6 @@ def apply_setup_bundle(bundle: dict) -> list[str]:
     return applied
 
 
-def build_setup_bundle() -> dict:
-    """Assemble the current setup into one dict for export (secrets included)."""
-    from gmap_planner.config import DRIVE_CREDENTIALS_FILE
-
-    cfg = load_app_config()
-    bundle: dict = {}
-    for key in SETUP_KEYS:
-        v = cfg.get(key)
-        if not v:
-            continue
-        if key == "GCP_SA_JSON":
-            try:
-                bundle[key] = json.loads(v)  # embed as an object for readability
-            except Exception:
-                bundle[key] = v
-        else:
-            bundle[key] = v
-    if os.path.exists(DRIVE_CREDENTIALS_FILE):
-        try:
-            with open(DRIVE_CREDENTIALS_FILE, encoding="utf-8") as f:
-                bundle["credentials"] = json.load(f)
-        except Exception:
-            pass
-    return bundle
-
-
-def _downloads_dir() -> str:
-    d = os.path.join(os.path.expanduser("~"), "Downloads")
-    return d if os.path.isdir(d) else os.path.expanduser("~")
-
-
-def save_setup_bundle_to_disk() -> str:
-    """Write the current setup to a JSON file on disk and return its path.
-
-    Used instead of a download button because the packaged pywebview app ignores
-    Streamlit's blob downloads.
-    """
-    path = os.path.join(_downloads_dir(), "trip-map-maker-setup.json")
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(build_setup_bundle(), f, indent=2, ensure_ascii=False)
-    return path
-
-
-def reveal_in_file_manager(path: str) -> None:
-    """Open the folder containing `path` in the OS file manager (best-effort)."""
-    folder = path if os.path.isdir(path) else os.path.dirname(path)
-    try:
-        opener = getattr(os, "startfile", None)
-        if opener is not None:  # Windows
-            opener(folder)
-            return
-        import subprocess
-
-        cmd = "open" if sys.platform == "darwin" else "xdg-open"
-        subprocess.Popen([cmd, folder])
-    except Exception:
-        pass
-
-
 def get_secret(name: str) -> str | None:
     """Setting resolved from Streamlit secrets, then env, then the saved config.json.
 

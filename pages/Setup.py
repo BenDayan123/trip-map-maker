@@ -10,14 +10,11 @@ import streamlit as st
 
 from gmap_planner.appconfig import (
     apply_setup_bundle,
-    build_setup_bundle,
     cached_update_check,
     get_secret,
     load_app_config,
-    reveal_in_file_manager,
     run_update,
     save_app_config,
-    save_setup_bundle_to_disk,
 )
 from gmap_planner.config import (
     DRIVE_CREDENTIALS_FILE,
@@ -30,50 +27,56 @@ st.set_page_config(page_title="Setup", page_icon="⚙️", layout="centered")
 st.title("⚙️ Setup")
 
 
-_EXAMPLE_BUNDLE = """{
-  "GOOGLE_API_KEY": "your-gemini-api-key",
-  "GEO_API_KEY": "your-geocoding-api-key",
-  "GCP_PROJECT_ID": "your-gcp-project-id",
-  "ANALYTICS_SHEET_ID": "your-sheet-id-or-url",
-  "GCP_SA_JSON": { "type": "service_account", "project_id": "...", "private_key": "..." },
-  "credentials": { "installed": { "client_id": "...", "client_secret": "..." } }
-}"""
+# Manual input widget key -> config key, so an uploaded file fills those fields.
+_FIELD_KEYS = {
+    "cfg_gemini": "GOOGLE_API_KEY",
+    "cfg_geo": "GEO_API_KEY",
+    "cfg_proj": "GCP_PROJECT_ID",
+    "cfg_sa": "GCP_SA_JSON",
+    "cfg_sheet": "ANALYTICS_SHEET_ID",
+}
 
 
 def render_one_file_setup() -> None:
-    """Import/export the whole setup (keys + service-account + credentials.json) as one file."""
+    """Upload one JSON that fills every setting below + writes credentials.json."""
     st.caption(
-        "Load your whole setup from a single JSON file — every API key, the "
-        "service-account JSON, and the Drive `credentials.json`. Any key not in "
-        "the file keeps its current value."
+        "Upload a single JSON to fill in every setting below — API keys, the "
+        "service-account JSON, and the Drive `credentials.json` (written "
+        "automatically). Any key not in the file keeps its current value."
     )
     up = st.file_uploader("Setup file (.json)", type=["json"], key="setup_bundle")
-    if up is not None:
-        try:
-            bundle = json.loads(up.getvalue().decode("utf-8"))
-            if not isinstance(bundle, dict):
-                raise ValueError("the file must contain a JSON object")
-        except Exception as e:
-            st.error(f"Not a valid setup file: {e}")
-        else:
-            if st.button("Apply this file", type="primary", use_container_width=True):
-                applied = apply_setup_bundle(bundle)
-                if applied:
-                    st.success("Applied: " + ", ".join(applied) + ". Used on the next run.")
-                else:
-                    st.warning("Nothing applied — no recognized keys in the file.")
 
-    with st.expander("Export current setup / see the file format"):
-        st.caption(
-            "Save everything you've configured to one file — a backup, or to copy "
-            "the setup to another computer. **Contains secrets, keep it private.**"
-        )
-        if st.button("💾 Save my setup to a file", use_container_width=True):
-            path = save_setup_bundle_to_disk()
-            st.success(f"Saved to: {path}")
-            reveal_in_file_manager(path)
-        st.markdown("**Format** — include only the keys you want to set:")
-        st.code(_EXAMPLE_BUNDLE, language="json")
+    # Result of the last apply (set just before the rerun that filled the fields).
+    msg = st.session_state.pop("_setup_bundle_applied", None)
+    if msg is not None:
+        if msg:
+            st.success("Loaded into the fields below: " + ", ".join(msg) + ".")
+        else:
+            st.warning("Nothing loaded — no recognized keys in the file.")
+
+    if up is None:
+        return
+    # Apply each newly-uploaded file exactly once.
+    fid = getattr(up, "file_id", None) or up.name
+    if st.session_state.get("_setup_bundle_done") == fid:
+        return
+    try:
+        bundle = json.loads(up.getvalue().decode("utf-8"))
+        if not isinstance(bundle, dict):
+            raise ValueError("the file must contain a JSON object")
+    except Exception as e:
+        st.error(f"Not a valid setup file: {e}")
+        return
+
+    applied = apply_setup_bundle(bundle)  # saves config.json + writes credentials.json
+    st.session_state["_setup_bundle_done"] = fid
+    # Push the saved values into the manual input widgets so they show them.
+    cfg = load_app_config()
+    for wkey, ckey in _FIELD_KEYS.items():
+        if ckey in cfg:
+            st.session_state[wkey] = cfg[ckey]
+    st.session_state["_setup_bundle_applied"] = applied
+    st.rerun()
 
 
 def _dir_has_files(path: str) -> bool:
@@ -105,29 +108,31 @@ def render_setup_status() -> None:
 
 
 def render_settings() -> None:
-    """Let the admin enter/save keys + settings without editing files (for the exe)."""
+    """Let the admin enter/save keys + settings without editing files (for the exe).
+
+    Field values live in session_state (keyed cfg_*), seeded from the saved config;
+    an uploaded setup file sets those same keys, so the fields show its values.
+    """
     cfg = load_app_config()
+    for wkey, ckey in _FIELD_KEYS.items():
+        st.session_state.setdefault(wkey, cfg.get(ckey, ""))
+
     st.caption("Saved on this computer. Needed once.")
-    gk = st.text_input("Gemini API key (GOOGLE_API_KEY)", value=cfg.get("GOOGLE_API_KEY", ""),
-                       type="password", key="cfg_gemini")
-    gek = st.text_input("Geocoding API key (GEO_API_KEY)", value=cfg.get("GEO_API_KEY", ""),
-                        type="password", key="cfg_geo")
+    gk = st.text_input("Gemini API key (GOOGLE_API_KEY)", type="password", key="cfg_gemini")
+    gek = st.text_input("Geocoding API key (GEO_API_KEY)", type="password", key="cfg_geo")
 
     st.markdown("**Usage gauges (optional)**")
     st.caption("Fill these to show the live Geocoding-usage gauge. Needs the Cloud "
                "Monitoring API enabled and a service account with `roles/monitoring.viewer`.")
-    proj = st.text_input("GCP project id (GCP_PROJECT_ID)", value=cfg.get("GCP_PROJECT_ID", ""),
-                         key="cfg_proj")
-    sa_json = st.text_area("Service-account JSON (GCP_SA_JSON)", value=cfg.get("GCP_SA_JSON", ""),
-                           height=120, key="cfg_sa",
+    proj = st.text_input("GCP project id (GCP_PROJECT_ID)", key="cfg_proj")
+    sa_json = st.text_area("Service-account JSON (GCP_SA_JSON)", height=120, key="cfg_sa",
                            help="Paste the whole downloaded service-account .json here.")
 
     st.markdown("**Analytics (optional)**")
     st.caption("The Google Sheet the publish log is written to and read from. "
                "Share the Sheet with the `GCP_SA_JSON` service-account email and "
                "enable the Google Sheets API.")
-    sheet_id = st.text_input("Analytics Sheet id or URL (ANALYTICS_SHEET_ID)",
-                             value=cfg.get("ANALYTICS_SHEET_ID", ""), key="cfg_sheet")
+    sheet_id = st.text_input("Analytics Sheet id or URL (ANALYTICS_SHEET_ID)", key="cfg_sheet")
 
     if st.button("Save settings", use_container_width=True):
         cfg["GOOGLE_API_KEY"] = gk.strip()

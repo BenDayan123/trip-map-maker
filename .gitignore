@@ -1,11 +1,14 @@
 # Secrets
 .env
+config.json
+trip-map-maker-setup.json
 credentials.json
 token.json
 .streamlit/secrets.toml
 *-sa.json
 service-account*.json
 storage_state.json
+/tests
 
 # Python
 __pycache__/
