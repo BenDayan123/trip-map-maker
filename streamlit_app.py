@@ -70,13 +70,16 @@ def _cached_usage(project_id, sa_json, geo_limit):
     try:
         import json
         sa_info = json.loads(sa_json)
-    except (TypeError, ValueError):
+        return get_api_usage(
+            project_id=project_id,
+            sa_info=sa_info,
+            geo_monthly_limit=int(geo_limit),
+        )
+    except Exception:
+        # Bad/partial creds, monitoring API disabled, network — show "not
+        # configured" instead of crashing the sidebar. Recovers once fixed
+        # (the cache is cleared whenever the setup changes).
         return None
-    return get_api_usage(
-        project_id=project_id,
-        sa_info=sa_info,
-        geo_monthly_limit=int(geo_limit),
-    )
 
 
 def render_usage_gauges() -> None:

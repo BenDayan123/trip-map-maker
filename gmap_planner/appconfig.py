@@ -89,17 +89,24 @@ def apply_setup_bundle(bundle: dict) -> list[str]:
 
 
 def get_secret(name: str) -> str | None:
-    """Setting resolved from Streamlit secrets, then env, then the saved config.json.
+    """Setting resolved from the admin's saved config.json first, then Streamlit
+    secrets, then env.
 
-    The config.json fallback is what makes the packaged exe usable: there's no
-    secrets.toml to edit, so the admin enters keys in the Setup page instead.
+    config.json (the Setup page) is the admin's source of truth in the local /
+    packaged app, so it must WIN over any stale ``.streamlit/secrets.toml`` — a
+    value edited in Setup takes effect immediately instead of being shadowed by
+    an old secrets entry. Secrets/env remain fallbacks for hosted runs where
+    config.json is absent.
     """
+    val = load_app_config().get(name)
+    if val:
+        return val
     try:
         if name in st.secrets:
             return st.secrets[name]
     except Exception:
-        pass  # no secrets.toml present (e.g. packaged exe) — fall back below
-    return os.environ.get(name) or load_app_config().get(name)
+        pass  # no secrets.toml present (e.g. packaged exe)
+    return os.environ.get(name)
 
 
 # --- In-app updater (GitHub Releases) -------------------------------------
