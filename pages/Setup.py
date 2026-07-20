@@ -69,7 +69,7 @@ def render_one_file_setup() -> None:
         return
 
     applied = apply_setup_bundle(bundle)  # saves config.json + writes credentials.json
-    st.cache_data.clear()  # drop the memoized usage gauge so it re-reads the new keys
+    st.session_state.pop("usage", None)  # force one usage refresh with the new keys
     st.session_state["_setup_bundle_done"] = fid
     # Push the saved values into the manual input widgets so they show them.
     cfg = load_app_config()
@@ -142,7 +142,7 @@ def render_settings() -> None:
         cfg["GCP_SA_JSON"] = sa_json.strip()
         cfg["ANALYTICS_SHEET_ID"] = sheet_id.strip()
         save_app_config(cfg)
-        st.cache_data.clear()  # drop the memoized usage gauge so it re-reads the new keys
+        st.session_state.pop("usage", None)  # force one usage refresh with the new keys
         st.success("Saved. They'll be used on the next run.")
 
 

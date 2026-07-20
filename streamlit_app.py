@@ -63,31 +63,34 @@ def _gauge_color(pct: float) -> str:
     return "#388E3C"
 
 
-@st.cache_data(ttl=300, show_spinner=False)
-def _cached_usage(project_id, sa_json, geo_limit):
+def _compute_usage():
+    """One live Cloud Monitoring lookup. Returns the usage dict or None."""
+    project_id = get_secret("GCP_PROJECT_ID")
+    sa_json = get_secret("GCP_SA_JSON")
+    geo_limit = get_secret("GEO_MONTHLY_LIMIT") or GEO_MONTHLY_LIMIT
     if not project_id or not sa_json:
         return None
     try:
         import json
-        sa_info = json.loads(sa_json)
         return get_api_usage(
             project_id=project_id,
-            sa_info=sa_info,
+            sa_info=json.loads(sa_json),
             geo_monthly_limit=int(geo_limit),
         )
     except Exception:
-        # Bad/partial creds, monitoring API disabled, network — show "not
-        # configured" instead of crashing the sidebar. Recovers once fixed
-        # (the cache is cleared whenever the setup changes).
+        # Bad/partial creds, monitoring API disabled/unbilled, network — show
+        # "not configured" instead of crashing the sidebar.
         return None
 
 
 def render_usage_gauges() -> None:
-    usage = _cached_usage(
-        get_secret("GCP_PROJECT_ID"),
-        get_secret("GCP_SA_JSON"),
-        get_secret("GEO_MONTHLY_LIMIT") or GEO_MONTHLY_LIMIT,
-    )
+    # Deliberately NOT time-cached: the Monitoring call runs only when there's no
+    # cached result for this session — i.e. once at app launch, and again after a
+    # geocoded map is created (which pops "usage"). Keeps Monitoring requests to a
+    # minimum. Settings changes on the Setup page also pop it to force a refresh.
+    if "usage" not in st.session_state:
+        st.session_state["usage"] = _compute_usage()
+    usage = st.session_state["usage"]
     if usage is None:
         st.caption("📊 API usage metrics not configured.")
         with st.expander("Enable the usage gauges"):
@@ -369,6 +372,12 @@ def make_map_page() -> None:
                 with st.expander("Technical details"):
                     st.exception(e)
                 st.stop()
+
+        # A geocoded run just consumed Geocoding requests — refresh the gauge once
+        # (the only refresh besides app launch). Skipped when geocoding was off.
+        if not no_geocode:
+            st.session_state.pop("usage", None)
+            st.rerun()
 
     # --- Results (persisted across reruns) --------------------------------
     if "result_files" in st.session_state:
