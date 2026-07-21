@@ -20,7 +20,9 @@ GEO_MONTHLY_LIMIT = 10000
 # My Maps has no create/import API, so a map is created by driving the My Maps
 # editor with Playwright. Sharing then goes through the Drive API (a My Maps map
 # is a Drive file of this mimeType).
-MYMAPS_HOME_URL = "https://www.google.com/maps/d/?hl=en"
+# /u/0/ pins the first signed-in account: without it a multi-account profile can
+# land on an account chooser instead of the map list.
+MYMAPS_HOME_URL = "https://www.google.com/maps/d/u/0/?hl=en"
 MYMAPS_MAP_MIME = "application/vnd.google-apps.map"
 # Persistent files live in the app data dir: the project folder for a local run, or a
 # stable per-user folder inside a packaged exe (where the cwd is a temp unpack dir).

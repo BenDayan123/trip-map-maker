@@ -37,6 +37,9 @@ SEL_CREATE_CONFIRM = re.compile(r"^\s*create\s*$", re.I)
 SEL_IMPORT = re.compile(r"^\s*import\s*$", re.I)
 SEL_UNTITLED_MAP = re.compile(r"untitled map", re.I)
 SEL_SAVE = re.compile(r"^\s*(save|ok|done)\s*$", re.I)
+# Text the Picker's upload pane shows while it waits for a file — i.e. "the drag
+# and drop dialog is still open".
+SEL_PICKER_OPEN = re.compile(r"drag (and drop|files here)|select a file from your", re.I)
 # Text shown only when signed OUT — used to detect login state.
 SEL_SIGNED_OUT = re.compile(r"sign in", re.I)
 
@@ -274,18 +277,69 @@ def _set_kml_on_any_frame(page, kml_path: str, timeout_ms: int = 30000) -> bool:
     return False
 
 
-def _do_import(editor, kml_path: str) -> None:
+def _picker_open(page) -> bool:
+    """Is the Picker's upload dialog still on screen (waiting for a file)?"""
+    for frame in _picker_frames(page):
+        try:
+            if frame.get_by_text(SEL_PICKER_OPEN).first.is_visible():
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def _dismiss_picker(page) -> None:
+    """Escape out of a leftover Picker dialog.
+
+    Anything clicked while it's open (notably 'Import' on a retry) lands on the
+    modal's backdrop and does nothing — which is what leaves a run stuck staring
+    at the drag-and-drop dialog.
+    """
+    for _ in range(3):
+        if not _picker_open(page):
+            return
+        _log("dismissing a Picker dialog that is still open")
+        try:
+            page.keyboard.press("Escape")
+        except Exception:
+            return
+        page.wait_for_timeout(700)
+
+
+def _wait_for_picker_close(page, timeout_ms: int = 25000) -> bool:
+    """Wait for the upload dialog to go away after the file was set."""
+    deadline = time.time() + timeout_ms / 1000
+    while time.time() < deadline:
+        if not _picker_open(page):
+            return True
+        page.wait_for_timeout(500)
+    return False
+
+
+def _do_import(editor, kml_path: str, attempts: int = 3, close_timeout_ms: int = 25000) -> None:
     """Click 'Import' on the current layer and set the KML file into the Picker.
 
-    Factored out so it can be run twice: the initial import and a retry when the
-    first attempt lands an empty map. Raises MyMapsError if the file input is never
-    found.
+    Retries the whole click → set-file → dialog-closes cycle: the upload silently
+    fails often enough (and leaves the dialog sitting there) that one attempt is
+    not enough. Raises MyMapsError if every attempt leaves the dialog open.
     """
-    _log("clicking 'Import' on the base layer")
-    _click(editor, SEL_IMPORT, timeout_ms=20000)
-    _log(f"selecting KML file: {kml_path}")
-    if not _set_kml_on_any_frame(editor, kml_path):
-        raise MyMapsError("Could not find the file-upload input in the import dialog.")
+    for attempt in range(1, attempts + 1):
+        _dismiss_picker(editor)  # a stuck dialog would swallow the 'Import' click
+        _log(f"clicking 'Import' on the base layer (attempt {attempt}/{attempts})")
+        _click(editor, SEL_IMPORT, timeout_ms=20000)
+        _log(f"selecting KML file: {kml_path}")
+        if not _set_kml_on_any_frame(editor, kml_path):
+            if attempt == attempts:
+                raise MyMapsError(
+                    "Could not find the file-upload input in the import dialog."
+                )
+            continue
+        if _wait_for_picker_close(editor, close_timeout_ms):
+            return
+        _log("the upload dialog is still open — the file did not take")
+    raise MyMapsError(
+        "The My Maps import dialog stayed open after uploading the KML file."
+    )
 
 
 def _wait_for_mid(page, timeout_ms: int = 60000) -> str | None:
@@ -395,42 +449,75 @@ def _dialog_title_box(editor):
     return None
 
 
-def _set_title(editor, title: str) -> bool:
-    """Rename the map from 'Untitled map' to `title` via the title dialog.
+# The browser tab is named "<map name> - Google My Maps", which is the one place
+# the current map name can be read without guessing at Google's DOM.
+_TAB_SUFFIX_RE = re.compile(r"\s*[-–—|]\s*Google (My )?Maps\s*$", re.I)
 
-    Returns True if the title was changed. Logs (instead of silently swallowing)
-    so a failure here is visible — the rename is the user-facing point of the step.
+
+def map_name_from_tab(tab_title: str) -> str:
+    """The map's current name, taken from the browser tab title."""
+    return _TAB_SUFFIX_RE.sub("", tab_title or "").strip()
+
+
+def title_click_targets(tab_title: str) -> list:
+    """Patterns to click to open the title dialog, best guess first.
+
+    Importing a KML into a fresh map makes My Maps rename it after the file, so
+    'Untitled map' is frequently already gone by the time the rename runs — which
+    is why some maps kept the file name. The current name from the tab title is
+    the reliable target; the literal 'Untitled map' stays as a fallback.
+    """
+    name = map_name_from_tab(tab_title)
+    targets = []
+    if name and not SEL_UNTITLED_MAP.search(name):
+        targets.append(re.compile(rf"^\s*{re.escape(name)}\s*$"))
+    targets.append(SEL_UNTITLED_MAP)
+    return targets
+
+
+def _set_title(editor, title: str, attempts: int = 2) -> bool:
+    """Rename the map to `title` via the title dialog.
+
+    Returns True if the tab title confirms the rename. Logs (instead of silently
+    swallowing) so a failure here is visible — the rename is the user-facing point
+    of the step.
     """
     _log(f"renaming map to: {title}")
-    try:
-        # Open the title dialog by clicking the current (Untitled) map name.
-        if not _click(editor, SEL_UNTITLED_MAP, timeout_ms=8000, optional=True):
-            _log("could not find the 'Untitled map' title to click")
-            return False
-
-        box = _dialog_title_box(editor)
-        if box is None:
-            _log("title dialog did not expose a text box")
-            return False
-        box.fill(title)
-
-        # Confirm: a Save/OK button if present, otherwise Enter commits the field.
-        if not _click(editor, SEL_SAVE, timeout_ms=5000, optional=True):
-            box.press("Enter")
-        editor.wait_for_timeout(1200)
-
-        # Verify the rename actually took (the legend should now show `title`).
+    for attempt in range(1, attempts + 1):
         try:
-            if editor.get_by_text(title, exact=False).first.is_visible():
+            if map_name_from_tab(editor.title()) == title:
                 _log("title updated")
                 return True
-        except Exception:
-            pass
-        _log("title dialog handled (could not verify the new name on screen)")
-        return True
-    except Exception as e:
-        _log(f"title change failed: {e}")
-        return False
+
+            # Open the title dialog by clicking the map's current name.
+            for pattern in title_click_targets(editor.title()):
+                if _click(editor, pattern, timeout_ms=6000, optional=True):
+                    break
+            else:
+                _log(f"could not find the map title to click (attempt {attempt})")
+                editor.wait_for_timeout(1500)
+                continue
+
+            box = _dialog_title_box(editor)
+            if box is None:
+                _log("title dialog did not expose a text box")
+                editor.wait_for_timeout(1000)
+                continue
+            box.fill(title)
+
+            # Confirm: a Save/OK button if present, otherwise Enter commits the field.
+            if not _click(editor, SEL_SAVE, timeout_ms=5000, optional=True):
+                box.press("Enter")
+            editor.wait_for_timeout(1500)
+
+            # The tab title follows the map name, so it verifies the rename exactly.
+            if map_name_from_tab(editor.title()) == title:
+                _log("title updated")
+                return True
+            _log(f"title still {editor.title()!r} after attempt {attempt}")
+        except Exception as e:
+            _log(f"title change failed: {e}")
+    return False
 
 
 class MyMapsSession:
