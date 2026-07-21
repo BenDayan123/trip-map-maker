@@ -169,7 +169,7 @@ def make_map_page() -> None:
     """The main "Make Map" page: upload an itinerary, generate KML, optionally publish."""
     # --- Header -----------------------------------------------------------
     render_update_banner()
-    st.title("🗺️ Trip Map Maker")
+    st.title("🗺️ My Maps Generator")
     st.caption(
         "Upload a travel itinerary (PDF or TXT) and get Google My Maps KML files — "
         "each day a colored layer with numbered pins."
@@ -446,7 +446,14 @@ def make_map_page() -> None:
                 )
 
 
-st.set_page_config(page_title="Trip Map Maker", page_icon="🗺️", layout="centered")
+st.set_page_config(page_title="My Maps Generator", page_icon="🗺️", layout="centered")
+
+# Hide Streamlit's "Deploy" button — this is a local desktop app, there's nothing
+# to deploy. Runs on the entrypoint so it applies to every page.
+st.markdown(
+    "<style>[data-testid='stAppDeployButton']{display:none}</style>",
+    unsafe_allow_html=True,
+)
 
 # Sidebar nav: this file ("Make Map") first, then Analytics, then Setup.
 nav = st.navigation([

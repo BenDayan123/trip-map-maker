@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the standalone macOS app bundle (dist/TripMapMaker.app).
+# Build the standalone macOS app bundle (dist/My Maps Generator.app).
 #
 # Mac counterpart of build_exe.bat. PyInstaller is NOT a cross-compiler, so this
 # must run ON a Mac (Apple Silicon or Intel) with Python 3.11+ installed. The
@@ -7,7 +7,7 @@
 #
 # One-time:  pip install -r requirements.txt streamlit-desktop-app
 #            playwright install chromium      # only if you don't drive installed Chrome
-# Then:      ./build_app.sh                   # -> dist/TripMapMaker.app
+# Then:      ./build_app.sh                   # -> dist/My Maps Generator.app
 #            ./build_dmg.sh                    # -> TripMapMaker.dmg (drag-to-install)
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -19,7 +19,7 @@ fi
 
 python -c "import streamlit_desktop_app" 2>/dev/null || python -m pip install streamlit-desktop-app
 
-streamlit-desktop-app build streamlit_app.py --name TripMapMaker \
+streamlit-desktop-app build streamlit_app.py --name "My Maps Generator" \
   --icon icon.icns \
   --pyinstaller-options --noconfirm --windowed \
     --collect-all playwright \
@@ -33,13 +33,13 @@ streamlit-desktop-app build streamlit_app.py --name TripMapMaker \
 
 # Trim ~90MB of unused Google API discovery docs; keep only Drive (the only API
 # this app calls via googleapiclient). Safe: build('drive','v3') reads these.
-DOCS="dist/TripMapMaker.app/Contents/Resources/googleapiclient/discovery_cache/documents"
-[ -d "$DOCS" ] || DOCS="dist/TripMapMaker/_internal/googleapiclient/discovery_cache/documents"
+DOCS="dist/My Maps Generator.app/Contents/Resources/googleapiclient/discovery_cache/documents"
+[ -d "$DOCS" ] || DOCS="dist/My Maps Generator/_internal/googleapiclient/discovery_cache/documents"
 if [ -d "$DOCS" ]; then
   echo "Trimming unused Google API discovery docs..."
   find "$DOCS" -type f -name '*.json' ! -name 'drive.v2.json' ! -name 'drive.v3.json' -delete
 fi
 
 echo
-echo "Done. App bundle: dist/TripMapMaker.app"
+echo "Done. App bundle: dist/My Maps Generator.app"
 echo "Run ./build_dmg.sh to wrap it into a distributable .dmg."

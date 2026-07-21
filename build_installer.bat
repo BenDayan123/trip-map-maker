@@ -13,7 +13,7 @@ if not exist "%ISCC%" (
     exit /b 1
 )
 
-if not exist "dist\TripMapMaker\TripMapMaker.exe" (
+if not exist "dist\My Maps Generator\My Maps Generator.exe" (
     echo The app isn't built yet. Run build_exe.bat first.
     pause
     exit /b 1

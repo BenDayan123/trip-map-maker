@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Wrap dist/TripMapMaker.app into a distributable TripMapMaker.dmg.
+# Wrap dist/My Maps Generator.app into a distributable TripMapMaker.dmg.
 #
 # Uses only hdiutil (ships with macOS) — no Homebrew/extra tools. The DMG opens
 # to the app next to an Applications shortcut, so the user just drags to install.
@@ -7,8 +7,8 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-APP="dist/TripMapMaker.app"
-VOL="TripMapMaker"
+APP="dist/My Maps Generator.app"
+VOL="My Maps Generator"
 DMG="TripMapMaker.dmg"
 STAGING="dist/dmg"
 
@@ -30,4 +30,4 @@ hdiutil create -volname "$VOL" \
 rm -rf "$STAGING"
 echo
 echo "Done. Installer: $DMG"
-echo "Distribute this file; users drag TripMapMaker into Applications."
+echo "Distribute this file; users drag My Maps Generator into Applications."

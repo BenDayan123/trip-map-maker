@@ -17,7 +17,7 @@ from streamlit_desktop_app import start_desktop_app
 if __name__ == "__main__":
     start_desktop_app(
         "streamlit_app.py",
-        title="Trip Map Maker (dev)",
+        title="My Maps Generator (dev)",
         options={
             "theme.base": "light",
             "theme.primaryColor": "#2563EB",

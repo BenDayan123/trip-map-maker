@@ -1,5 +1,5 @@
 @echo off
-REM Build the standalone desktop executable (dist\TripMapMaker\TripMapMaker.exe).
+REM Build the standalone desktop executable (dist\My Maps Generator\My Maps Generator.exe).
 REM For the developer, not the admin. Requires: pip install streamlit-desktop-app
 cd /d "%~dp0"
 
@@ -9,7 +9,7 @@ python -c "import streamlit_desktop_app" 2>nul || python -m pip install streamli
 
 REM Theme is passed as Streamlit CLI options (config.toml isn't on the frozen
 REM app's config search path), forcing the blue primary color + light base.
-streamlit-desktop-app build streamlit_app.py --name TripMapMaker ^
+streamlit-desktop-app build streamlit_app.py --name "My Maps Generator" ^
   --icon icon.ico ^
   --pyinstaller-options --noconfirm --windowed ^
   --collect-all playwright ^
@@ -23,7 +23,7 @@ streamlit-desktop-app build streamlit_app.py --name TripMapMaker ^
 
 REM Trim ~90MB of unused Google API discovery docs; keep only Drive (the only
 REM API this app calls via googleapiclient). Safe: build('drive','v3') reads these.
-set "DOCS=dist\TripMapMaker\_internal\googleapiclient\discovery_cache\documents"
+set "DOCS=dist\My Maps Generator\_internal\googleapiclient\discovery_cache\documents"
 if exist "%DOCS%" (
     echo Trimming unused Google API discovery docs...
     for %%F in ("%DOCS%\*.json") do (
@@ -32,5 +32,5 @@ if exist "%DOCS%" (
 )
 
 echo.
-echo Done. The app is in dist\TripMapMaker\ (zip that folder to distribute).
+echo Done. The app is in dist\My Maps Generator\ (zip that folder to distribute).
 pause

@@ -1,2 +1,15 @@
 streamlit run streamlit_app.py
 pip install -r requirements.txt
+
+
+  Rebuild the two artifacts, in order:
+
+    build_exe.bat            :: re-freezes the app -> dist\TripMapMaker\
+    build_installer.bat      :: re-wraps it -> installer\TripMapMaker-Setup.exe
+
+    That's it — build_exe.bat picks up your latest code (it bundles streamlit_app.py, gmap_planner/, and pages/ fresh each run, and auto-trims the Google discovery docs), then build_installer.bat compiles the new TripMapMaker-Setup.exe.
+
+    Details worth knowing:
+
+    - Prereqs (already set up on your machine): pip install streamlit-desktop-app and Inno Setup 6. Only needed once.
+      - If you changed dependencies (requirements.txt): run pip install -r requirements.txt first so

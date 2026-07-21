@@ -34,7 +34,7 @@ jobs:
 
       - name: Freeze the app (PyInstaller via streamlit-desktop-app)
         run: |
-          streamlit-desktop-app build streamlit_app.py --name TripMapMaker \
+          streamlit-desktop-app build streamlit_app.py --name "My Maps Generator" \
             --icon icon.ico \
             --pyinstaller-options --noconfirm --windowed \
               --collect-all playwright \
@@ -48,7 +48,7 @@ jobs:
 
       - name: Trim unused Google API discovery docs (~90MB)
         run: |
-          DOCS="dist/TripMapMaker/_internal/googleapiclient/discovery_cache/documents"
+          DOCS="dist/My Maps Generator/_internal/googleapiclient/discovery_cache/documents"
           if [ -d "$DOCS" ]; then
             find "$DOCS" -type f -name '*.json' ! -name 'drive.v2.json' ! -name 'drive.v3.json' -delete
           fi

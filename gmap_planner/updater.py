@@ -151,11 +151,19 @@ def apply_update(installer_path: str) -> None:
             "pull the new code instead."
         )
     if sys.platform.startswith("win"):
-        # DETACHED so the installer outlives this process when Inno closes the app.
+        # DETACHED so the installer outlives the app we're about to kill.
         DETACHED = 0x00000008 | 0x00000200  # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
         subprocess.Popen(
-            [installer_path, "/SILENT", "/SUPPRESSMSGBOXES",
-             "/CLOSEAPPLICATIONS", "/RESTARTAPPLICATIONS", "/NORESTART"],
+            [installer_path, "/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART"],
+            close_fds=True,
+            creationflags=DETACHED,
+        )
+        # Inno can't overwrite files this app holds open, and Restart Manager
+        # can't reliably close the pywebview host + its Streamlit child — that's
+        # what left the app stuck on "Updating…". Quit the whole app ourselves so
+        # the files are free; installer.iss [Run] relaunches it when done.
+        subprocess.Popen(
+            ["taskkill", "/F", "/T", "/IM", os.path.basename(sys.executable)],
             close_fds=True,
             creationflags=DETACHED,
         )
