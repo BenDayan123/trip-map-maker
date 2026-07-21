@@ -10,7 +10,12 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from .config import DRIVE_CREDENTIALS_FILE, DRIVE_TOKEN_FILE, PW_PROFILE_DIR
-from .drive_share import get_drive_service, share_map
+from .drive_share import (
+    DriveShareError,
+    get_drive_service,
+    restrict_download,
+    share_map,
+)
 from .mymaps import MyMapsSession
 
 ProgressFn = Callable[[str, float], None]
@@ -59,7 +64,14 @@ def publish_kml_files(
             progress(step, frac)
 
     # Authenticate Drive up front (one consent) so we fail fast before the browser.
-    drive = get_drive_service(credentials_path, token_path) if recipients else None
+    # Every map gets its download/copy restriction applied, so Drive is useful even
+    # with no recipients — but without them it stays optional (no credentials needed).
+    try:
+        drive = get_drive_service(credentials_path, token_path)
+    except DriveShareError:
+        if recipients:
+            raise
+        drive = None
 
     results: list[PublishedMap] = []
     total = len(kml_files)
@@ -73,6 +85,8 @@ def publish_kml_files(
             try:
                 info = session.create_map_from_kml(kml, title)
                 rec.url, rec.mid = info["url"], info["mid"]
+                if drive is not None:
+                    restrict_download(rec.mid, title=title, service=drive)
                 if recipients:
                     report(f"Sharing map {i + 1}/{total}", (i + 0.7) / total)
                     rec.shared_with = share_map(

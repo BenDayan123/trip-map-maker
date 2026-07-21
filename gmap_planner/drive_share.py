@@ -101,6 +101,35 @@ def _resolve_file_id(service, mid: str, title: str | None) -> str:
     )
 
 
+def restrict_download(
+    mid: str,
+    *,
+    title: str | None = None,
+    credentials_path: str = _CRED,
+    token_path: str = DRIVE_TOKEN_FILE,
+    service=None,
+) -> bool:
+    """Turn off "Viewers and commenters can see the option to download, print, copy".
+
+    This is the same switch as the Share → gear → "Commenters and viewers" checkbox
+    in the My Maps/Drive dialog; Drive exposes it as the file's
+    ``copyRequiresWriterPermission`` flag, so there's no dialog to drive.
+    Best-effort: a failure here must not lose an otherwise-published map.
+    """
+    try:
+        service = service or get_drive_service(credentials_path, token_path)
+        file_id = _resolve_file_id(service, mid, title)
+        service.files().update(
+            fileId=file_id,
+            body={"copyRequiresWriterPermission": True},
+            fields="id",
+        ).execute()
+        return True
+    except Exception as e:
+        print(f"  ! Could not restrict download/copy for the map: {e}")
+        return False
+
+
 def share_map(
     mid: str,
     emails: list[str],
