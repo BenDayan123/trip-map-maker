@@ -52,15 +52,21 @@ df["map_links"] = column("map_links").fillna("").astype(str)
 # Rows logged before the Maps column existed: count their links instead.
 counted = df["map_links"].map(maps_in_row)
 df["maps"] = pd.to_numeric(column("maps"), errors="coerce").fillna(counted).astype(int)
+# Places were never recorded for older rows — nothing to reconstruct them from.
+df["places"] = pd.to_numeric(column("places"), errors="coerce").fillna(0).astype(int)
 
 # --- Metrics (same definitions as the Sheet's summary box) ---
 this_month = df["created_at"].dt.to_period("M") == pd.Period(datetime.now(), freq="M")
 
-c1, c2, c3, c4 = st.columns(4)
+c1, c2, c3 = st.columns(3)
 c1.metric("Publishes", len(df))
-c2.metric("Distinct trips", df["trip_name"].nunique())
-c3.metric("Maps created", int(df["maps"].sum()))
-c4.metric("Maps this month", int(df.loc[this_month, "maps"].sum()))
+c2.metric("Maps created", int(df["maps"].sum()))
+c3.metric("Places created", int(df["places"].sum()))
+
+c4, c5, c6 = st.columns(3)
+c4.metric("Distinct trips", df["trip_name"].nunique())
+c5.metric("Maps this month", int(df.loc[this_month, "maps"].sum()))
+c6.metric("Places this month", int(df.loc[this_month, "places"].sum()))
 
 # --- Over-time chart ---
 by_day = (
@@ -90,6 +96,7 @@ st.dataframe(
     column_config={
         titles["created_at"]: st.column_config.DatetimeColumn(format="YYYY-MM-DD HH:mm"),
         titles["maps"]: st.column_config.NumberColumn(width="small"),
+        titles["places"]: st.column_config.NumberColumn(width="small"),
         titles["map_links"]: st.column_config.ListColumn(width="large"),
     },
 )
