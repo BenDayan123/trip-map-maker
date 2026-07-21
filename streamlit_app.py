@@ -18,7 +18,12 @@ import tempfile
 
 import streamlit as st
 
-from gmap_planner.appconfig import cached_update_check, get_secret, run_update
+from gmap_planner.appconfig import (
+    cached_update_check,
+    get_project_id,
+    get_secret,
+    run_update,
+)
 from gmap_planner.config import (
     DRIVE_CREDENTIALS_FILE,
     GEO_MONTHLY_LIMIT,
@@ -65,7 +70,7 @@ def _gauge_color(pct: float) -> str:
 
 def _compute_usage():
     """One live Cloud Monitoring lookup. Returns the usage dict or None."""
-    project_id = get_secret("GCP_PROJECT_ID")
+    project_id = get_project_id()
     sa_json = get_secret("GCP_SA_JSON")
     geo_limit = get_secret("GEO_MONTHLY_LIMIT") or GEO_MONTHLY_LIMIT
     if not project_id or not sa_json:
@@ -95,11 +100,10 @@ def render_usage_gauges() -> None:
         st.caption("📊 API usage metrics not configured.")
         with st.expander("Enable the usage gauges"):
             st.markdown(
-                "Fill the **Usage gauges** fields on the **⚙️ Setup** page "
-                "(needs the Cloud Monitoring API enabled and a service "
-                "account with `roles/monitoring.viewer`):\n"
-                "- `GCP_PROJECT_ID` — the project behind your API keys\n"
-                "- `GCP_SA_JSON` — the service-account JSON"
+                "Paste the service-account JSON (`GCP_SA_JSON`) under **Usage "
+                "gauges** on the **⚙️ Setup** page — the project is read from "
+                "it. Needs the Cloud Monitoring API enabled and a service "
+                "account with `roles/monitoring.viewer`."
             )
         return
 

@@ -32,10 +32,11 @@ def save_app_config(cfg: dict) -> None:
 
 
 # Config keys stored in config.json (the sidebar/Setup fields).
+# GCP_PROJECT_ID is deliberately absent: it's derived from GCP_SA_JSON's
+# "project_id" (see `get_project_id`), so there's nothing to enter or store.
 SETUP_KEYS = [
     "GOOGLE_API_KEY",
     "GEO_API_KEY",
-    "GCP_PROJECT_ID",
     "GCP_SA_JSON",
     "ANALYTICS_SHEET_ID",
 ]
@@ -107,6 +108,27 @@ def get_secret(name: str) -> str | None:
     except Exception:
         pass  # no secrets.toml present (e.g. packaged exe)
     return os.environ.get(name)
+
+
+def get_project_id() -> str | None:
+    """The GCP project behind the API keys, taken from the service-account JSON.
+
+    The service-account file already carries its own ``project_id``, so asking the
+    admin to type it a second time only creates a way to get it wrong — the Setup
+    page no longer has that field. The JSON therefore wins; an explicit
+    ``GCP_PROJECT_ID`` secret/env is only a fallback (hosted runs, or a key file
+    without a ``project_id``). It can't be edited in the UI any more, so it must
+    not be able to shadow the JSON.
+    """
+    sa_json = get_secret("GCP_SA_JSON")
+    if sa_json:
+        try:
+            pid = json.loads(sa_json).get("project_id")
+            if pid:
+                return pid
+        except Exception:
+            pass  # not valid JSON — fall through to the explicit value
+    return get_secret("GCP_PROJECT_ID")
 
 
 # --- In-app updater (GitHub Releases) -------------------------------------

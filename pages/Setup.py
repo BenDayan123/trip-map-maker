@@ -31,7 +31,6 @@ st.title("⚙️ Setup")
 _FIELD_KEYS = {
     "cfg_gemini": "GOOGLE_API_KEY",
     "cfg_geo": "GEO_API_KEY",
-    "cfg_proj": "GCP_PROJECT_ID",
     "cfg_sa": "GCP_SA_JSON",
     "cfg_sheet": "ANALYTICS_SHEET_ID",
 }
@@ -80,6 +79,14 @@ def render_one_file_setup() -> None:
     st.rerun()
 
 
+def _project_id_of(sa_json: str) -> str | None:
+    """The project id inside a pasted service-account JSON, if it parses."""
+    try:
+        return json.loads(sa_json).get("project_id") or None
+    except Exception:
+        return None
+
+
 def _dir_has_files(path: str) -> bool:
     try:
         return os.path.isdir(path) and any(os.scandir(path))
@@ -123,11 +130,16 @@ def render_settings() -> None:
     gek = st.text_input("Geocoding API key (GEO_API_KEY)", type="password", key="cfg_geo")
 
     st.markdown("**Usage gauges (optional)**")
-    st.caption("Fill these to show the live Geocoding-usage gauge. Needs the Cloud "
-               "Monitoring API enabled and a service account with `roles/monitoring.viewer`.")
-    proj = st.text_input("GCP project id (GCP_PROJECT_ID)", key="cfg_proj")
+    st.caption("Paste the service-account JSON to show the live Geocoding-usage gauge — "
+               "the project is read from it. Needs the Cloud Monitoring API enabled and "
+               "a service account with `roles/monitoring.viewer`.")
     sa_json = st.text_area("Service-account JSON (GCP_SA_JSON)", height=120, key="cfg_sa",
                            help="Paste the whole downloaded service-account .json here.")
+    proj = _project_id_of(sa_json)
+    if proj:
+        st.caption(f"Project: `{proj}` (read from the service-account JSON).")
+    elif sa_json.strip():
+        st.warning("Couldn't read a `project_id` from that JSON — paste the whole file.")
 
     st.markdown("**Analytics (optional)**")
     st.caption("The Google Sheet the publish log is written to and read from. "
@@ -138,7 +150,7 @@ def render_settings() -> None:
     if st.button("Save settings", use_container_width=True):
         cfg["GOOGLE_API_KEY"] = gk.strip()
         cfg["GEO_API_KEY"] = gek.strip()
-        cfg["GCP_PROJECT_ID"] = proj.strip()
+        cfg.pop("GCP_PROJECT_ID", None)  # derived from GCP_SA_JSON now
         cfg["GCP_SA_JSON"] = sa_json.strip()
         cfg["ANALYTICS_SHEET_ID"] = sheet_id.strip()
         save_app_config(cfg)
