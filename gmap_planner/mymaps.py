@@ -40,8 +40,17 @@ SEL_SAVE = re.compile(r"^\s*(save|ok|done)\s*$", re.I)
 # Text the Picker's upload pane shows while it waits for a file — i.e. "the drag
 # and drop dialog is still open".
 SEL_PICKER_OPEN = re.compile(r"drag (and drop|files here)|select a file from your", re.I)
+# My Maps' red toast when it refuses a save/import — usually because the editor's
+# session went stale or Google is rate-limiting rapid map creation.
+SEL_REVERTED = re.compile(
+    r"action was reverted|couldn't save|could not save|something went wrong", re.I
+)
 # Text shown only when signed OUT — used to detect login state.
 SEL_SIGNED_OUT = re.compile(r"sign in", re.I)
+
+
+# Seconds to wait between two map creations in one run (see create_map_from_kml).
+MAP_GAP_S = 5
 
 
 class MyMapsError(PipelineError):
@@ -306,12 +315,45 @@ def _dismiss_picker(page) -> None:
         page.wait_for_timeout(700)
 
 
+def _reverted(page) -> bool:
+    """Is My Maps showing its 'Your action was reverted' error toast?"""
+    try:
+        return page.get_by_text(SEL_REVERTED).first.is_visible()
+    except Exception:
+        return False
+
+
+def _recover_from_revert(page) -> None:
+    """Reload the editor after a reverted action, so the retry starts clean.
+
+    The toast means the editor's own state was rolled back; importing again into
+    that stale page just gets reverted too. Reloading re-syncs it with what
+    Google actually saved. Only safe once the map exists (`mid` in the URL) —
+    before that a reload would land on a fresh, empty editor.
+    """
+    _log("My Maps reverted the action — recovering")
+    page.wait_for_timeout(4000)  # let the rejected save settle before retrying
+    if "mid=" not in page.url:
+        return
+    try:
+        page.reload(wait_until="load")
+        page.wait_for_timeout(2500)
+    except Exception as e:
+        _log(f"reload after revert failed: {e}")
+
+
 def _wait_for_picker_close(page, timeout_ms: int = 25000) -> bool:
-    """Wait for the upload dialog to go away after the file was set."""
+    """Wait for the upload dialog to go away after the file was set.
+
+    Returns early when My Maps reverts the action: waiting out the full timeout
+    there is what made a failed second map look like a long hang.
+    """
     deadline = time.time() + timeout_ms / 1000
     while time.time() < deadline:
         if not _picker_open(page):
             return True
+        if _reverted(page):
+            return False
         page.wait_for_timeout(500)
     return False
 
@@ -336,6 +378,10 @@ def _do_import(editor, kml_path: str, attempts: int = 3, close_timeout_ms: int =
             continue
         if _wait_for_picker_close(editor, close_timeout_ms):
             return
+        if _reverted(editor):
+            _dismiss_picker(editor)
+            _recover_from_revert(editor)
+            continue
         _log("the upload dialog is still open — the file did not take")
     raise MyMapsError(
         "The My Maps import dialog stayed open after uploading the KML file."
@@ -388,6 +434,8 @@ def _wait_for_import(page, kml_path: str, timeout_ms: int = 40000) -> bool:
                 return True
         except Exception:
             pass
+        if _reverted(page):
+            return False  # the import was rolled back; nothing will ever render
         page.wait_for_timeout(500)
     return False
 
@@ -545,6 +593,7 @@ class MyMapsSession:
         self._pw = None
         self._ctx = None
         self._browser = None
+        self._maps_created = 0
 
     def __enter__(self):
         ensure_chromium()
@@ -581,7 +630,13 @@ class MyMapsSession:
         Returns ``{"title", "url", "mid"}``. Raises MyMapsError on failure
         (and writes a screenshot next to the KML for debugging).
         """
+        if self._maps_created:
+            # Creating maps back to back is what makes Google reject the second
+            # import with "Your action was reverted"; a short breather avoids it.
+            _log("pausing before the next map")
+            time.sleep(MAP_GAP_S)
         editor = _open_new_map(self._ctx)
+        self._maps_created += 1
         try:
             # Wait for the layer panel (with its 'Import' link) to render.
             editor.wait_for_load_state("domcontentloaded")

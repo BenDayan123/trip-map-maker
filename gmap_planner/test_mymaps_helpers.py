@@ -11,6 +11,7 @@ upload.
 
 import os
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -44,11 +45,14 @@ def test_title_click_targets():
 class FakePage:
     """Editor page stand-in: the Picker dialog sticks open after the first upload."""
 
-    def __init__(self, sticky_uploads):
+    def __init__(self, sticky_uploads, reverts=0, url="?mid=abc"):
         self.sticky_uploads = sticky_uploads
+        self.reverts = reverts  # how many uploads get "action was reverted"
+        self.url = url
         self.uploads = 0
         self.escapes = 0
         self.import_clicks = 0
+        self.reloads = 0
         self.picker_open = False
         page = self
 
@@ -64,13 +68,19 @@ class FakePage:
         self.uploads += 1
         self.picker_open = self.uploads <= self.sticky_uploads
 
+    def reverted(self):
+        return self.uploads <= self.reverts
+
+    def reload(self, **_kw):
+        self.reloads += 1
+        self.picker_open = False
+
     def wait_for_timeout(self, _ms):
         pass
 
 
-def test_import_retries_past_a_stuck_dialog():
-    page = FakePage(sticky_uploads=1)
-
+def run_import(page):
+    """`_do_import` against a stubbed page, with the browser calls faked out."""
     def fake_click(scope, pattern, **kw):
         page.import_clicks += 1
         return True
@@ -79,14 +89,25 @@ def test_import_retries_past_a_stuck_dialog():
         page.upload()
         return True
 
-    original = (mymaps._click, mymaps._set_kml_on_any_frame, mymaps._picker_open)
-    mymaps._click, mymaps._set_kml_on_any_frame, mymaps._picker_open = (
-        fake_click, fake_set_file, lambda scope: page.picker_open,
+    original = (
+        mymaps._click, mymaps._set_kml_on_any_frame, mymaps._picker_open,
+        mymaps._reverted,
+    )
+    (mymaps._click, mymaps._set_kml_on_any_frame, mymaps._picker_open,
+     mymaps._reverted) = (
+        fake_click, fake_set_file,
+        lambda scope: page.picker_open, lambda scope: page.reverted(),
     )
     try:
         mymaps._do_import(page, "trip.kml", close_timeout_ms=100)
     finally:
-        mymaps._click, mymaps._set_kml_on_any_frame, mymaps._picker_open = original
+        (mymaps._click, mymaps._set_kml_on_any_frame, mymaps._picker_open,
+         mymaps._reverted) = original
+
+
+def test_import_retries_past_a_stuck_dialog():
+    page = FakePage(sticky_uploads=1)
+    run_import(page)
 
     assert page.uploads == 2, page.uploads      # retried the upload
     assert page.import_clicks == 2              # clicked Import again for the retry
@@ -94,8 +115,28 @@ def test_import_retries_past_a_stuck_dialog():
     assert not page.picker_open
 
 
+def test_import_recovers_from_a_reverted_action():
+    # First upload is reverted by My Maps; the dialog stays open behind the toast.
+    page = FakePage(sticky_uploads=1, reverts=1)
+    started = time.time()
+    run_import(page)
+
+    assert page.uploads == 2, page.uploads      # retried after the revert
+    assert page.reloads == 1                    # reloaded the editor to re-sync
+    assert time.time() - started < 2            # bailed out instead of waiting
+
+
+def test_revert_before_the_map_exists_does_not_reload():
+    # No mid yet: reloading would land on a fresh empty editor, so it must not.
+    page = FakePage(sticky_uploads=1, reverts=1, url="https://www.google.com/maps/d/edit")
+    run_import(page)
+    assert page.reloads == 0
+
+
 if __name__ == "__main__":
     test_map_name_from_tab()
     test_title_click_targets()
     test_import_retries_past_a_stuck_dialog()
+    test_import_recovers_from_a_reverted_action()
+    test_revert_before_the_map_exists_does_not_reload()
     print("ok")
