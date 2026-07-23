@@ -162,8 +162,12 @@ def apply_update(installer_path: str) -> None:
         # can't reliably close the pywebview host + its Streamlit child — that's
         # what left the app stuck on "Updating…". Quit the whole app ourselves so
         # the files are free; installer.iss [Run] relaunches it when done.
+        # NO /T: the installer above is our child, and /T ("and any child
+        # processes") would kill it along with us — that's what made the update
+        # download, close the app, and then silently do nothing. /IM alone
+        # already matches every copy of the exe (host + Streamlit child).
         subprocess.Popen(
-            ["taskkill", "/F", "/T", "/IM", os.path.basename(sys.executable)],
+            ["taskkill", "/F", "/IM", os.path.basename(sys.executable)],
             close_fds=True,
             creationflags=DETACHED,
         )
