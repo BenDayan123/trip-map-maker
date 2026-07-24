@@ -108,9 +108,13 @@ def render_usage_gauges() -> None:
         return
 
     geo = usage["geocode"]
+    days = geo.get("reset_days")
+    reset = "" if days is None else (
+        "<br>resets tomorrow" if days == 1 else f"<br>resets in {days} days"
+    )
     st.markdown(
         ring_svg(geo["pct"], f"{geo['pct']:.0f}%",
-                 f"Geocoding · this month<br>{geo['used']:,} / {geo['limit']:,}",
+                 f"Geocoding · this month<br>{geo['used']:,} / {geo['limit']:,}{reset}",
                  _gauge_color(geo["pct"])),
         unsafe_allow_html=True,
     )

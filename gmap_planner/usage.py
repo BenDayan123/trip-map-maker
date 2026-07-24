@@ -96,6 +96,13 @@ def get_api_usage(
 
         geo_used = _request_count(project_id, token, GEOCODE_SERVICE, month_start, now)
 
-        return {"geocode": _gauge(geo_used, geo_monthly_limit)}
+        # Quota resets 1st of next month, 00:00 Pacific; count whole calendar days.
+        next_month = month_start.replace(year=now.year + (now.month == 12),
+                                         month=now.month % 12 + 1)
+        reset_days = (next_month.date() - now.date()).days
+
+        gauge = _gauge(geo_used, geo_monthly_limit)
+        gauge["reset_days"] = reset_days
+        return {"geocode": gauge}
     except Exception:
         return None
