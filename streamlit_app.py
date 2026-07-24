@@ -233,10 +233,14 @@ def make_map_page() -> None:
             elif logged_in is False:
                 st.caption("⚠️ Not signed in — click **Log in to Google**.")
 
-            share_emails = st.text_input(
-                "Share with (emails, comma-separated)",
-                help="Each created map is shared with these people. Leave blank to "
-                "create the maps without sharing.",
+            share_emails = st.multiselect(
+                "Share with (emails)",
+                options=[],
+                default=[],
+                accept_new_options=True,
+                placeholder="Type an email and press Enter…",
+                help="Each created map is shared with these people. Add one chip per "
+                "person; leave empty to create the maps without sharing.",
             )
             share_role = st.selectbox(
                 "Their access", ["viewer", "commenter", "editor"], index=0,
@@ -262,7 +266,7 @@ def make_map_page() -> None:
                 if os.path.exists(DRIVE_CREDENTIALS_FILE):
                     st.caption(f"✅ {DRIVE_CREDENTIALS_FILE} present.")
         else:
-            share_emails = ""
+            share_emails = []
             share_role = "viewer"
             notify_share = True
             show_browser = False
@@ -337,7 +341,9 @@ def make_map_page() -> None:
                 # --- Optional: publish each KML to My Maps + share (local only) ---
                 st.session_state.pop("map_results", None)
                 if publish_enabled:
-                    recipients = [e.strip() for e in share_emails.split(",") if e.strip()]
+                    recipients = list(dict.fromkeys(
+                        e.strip() for e in share_emails if e.strip()
+                    ))
                     try:
                         with st.status("Publishing to Google My Maps…", expanded=True) as pstatus:
                             pbar = st.progress(0.0)
