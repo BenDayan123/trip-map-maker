@@ -233,12 +233,17 @@ def make_map_page() -> None:
             elif logged_in is False:
                 st.caption("⚠️ Not signed in — click **Log in to Google**.")
 
-            # Kill the dropdown caret — there are no options to autocomplete, it's a
-            # pure chip entry. Clear-all keeps its icon (it has role=button; the
-            # caret doesn't).
+            # Chip entry with no option list: kill the dropdown caret (Clear-all
+            # keeps its icon — it has role=button, the caret doesn't) and the empty
+            # "No results" popover that shows on focus. The "Add: <email>" popover
+            # uses a different container, so it stays.
             st.markdown(
-                '<style>[data-testid="stMultiSelect"] [data-baseweb="select"] '
-                'svg[data-baseweb="icon"]:not([role]){display:none}</style>',
+                "<style>"
+                '[data-testid="stMultiSelect"] [data-baseweb="select"] '
+                "svg[data-baseweb=\"icon\"]:not([role]){display:none}"
+                '[data-baseweb="popover"]:has([data-testid="stSelectboxVirtualDropdownEmpty"])'
+                "{display:none}"
+                "</style>",
                 unsafe_allow_html=True,
             )
             share_emails = st.multiselect(
