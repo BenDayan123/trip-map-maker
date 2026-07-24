@@ -233,6 +233,14 @@ def make_map_page() -> None:
             elif logged_in is False:
                 st.caption("⚠️ Not signed in — click **Log in to Google**.")
 
+            # Kill the dropdown caret — there are no options to autocomplete, it's a
+            # pure chip entry. Clear-all keeps its icon (it has role=button; the
+            # caret doesn't).
+            st.markdown(
+                '<style>[data-testid="stMultiSelect"] [data-baseweb="select"] '
+                'svg[data-baseweb="icon"]:not([role]){display:none}</style>',
+                unsafe_allow_html=True,
+            )
             share_emails = st.multiselect(
                 "Share with (emails)",
                 options=[],
