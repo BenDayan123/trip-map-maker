@@ -53,6 +53,14 @@ jobs:
             find "$DOCS" -type f -name '*.json' ! -name 'drive.v2.json' ! -name 'drive.v3.json' -delete
           fi
 
+      - name: Trim unused google.api protobuf stubs
+        run: |
+          DIR="dist/My Maps Generator/_internal/google/api"
+          if [ -d "$DIR" ]; then
+            find "$DIR" -maxdepth 1 -type f \( -name '*_pb2.py' -o -name '*_pb2.pyi' \) -delete
+            find "$DIR" -type d -name '__pycache__' -exec rm -rf {} +
+          fi
+
       - name: Build the installer (Inno Setup)
         run: |
           choco install innosetup -y --no-progress

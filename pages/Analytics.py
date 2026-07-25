@@ -9,17 +9,9 @@ page and the Sheet read the same way.
 
 from datetime import datetime
 
-import pandas as pd
 import streamlit as st
 
-from gmap_planner.analytics import (
-    COLUMNS,
-    _sheet_id,
-    _worksheet,
-    ensure_layout,
-    fetch_rows,
-    maps_in_row,
-)
+from gmap_planner.analytics import _sheet_id, _worksheet, ensure_layout, fetch_rows, maps_in_row
 
 st.set_page_config(page_title="Analytics", page_icon="📊", layout="centered")
 st.title("📊 Analytics")
@@ -38,68 +30,41 @@ if not rows:
     st.info("No maps have been logged yet. Publish a map to see it here.")
     st.stop()
 
-df = pd.DataFrame(rows)
+
+def maps_count(row: dict) -> int:
+    """Row's `maps` count, falling back to counting `map_links` (older rows)."""
+    maps = row.get("maps")
+    return int(maps) if maps else maps_in_row(row.get("map_links", ""))
 
 
-def column(key: str) -> pd.Series:
-    """A column of the log, empty-but-present if the Sheet never had it."""
-    return df[key] if key in df else pd.Series([""] * len(df), index=df.index)
+def places_count(row: dict) -> int:
+    places = row.get("places")
+    return int(places) if places else 0
 
 
-df["created_at"] = pd.to_datetime(column("created_at"), errors="coerce")
-df["trip_name"] = column("trip_name").fillna("").astype(str)
-df["map_links"] = column("map_links").fillna("").astype(str)
-# Rows logged before the Maps column existed: count their links instead.
-counted = df["map_links"].map(maps_in_row)
-df["maps"] = pd.to_numeric(column("maps"), errors="coerce").fillna(counted).astype(int)
-# Places were never recorded for older rows — nothing to reconstruct them from.
-df["places"] = pd.to_numeric(column("places"), errors="coerce").fillna(0).astype(int)
+this_month_prefix = datetime.now().strftime("%Y-%m")
+this_month_rows = [r for r in rows if r.get("created_at", "").startswith(this_month_prefix)]
 
 # --- Metrics (same definitions as the Sheet's summary box) ---
-this_month = df["created_at"].dt.to_period("M") == pd.Period(datetime.now(), freq="M")
-
 c1, c2, c3 = st.columns(3)
-c1.metric("Publishes", len(df))
-c2.metric("Maps created", int(df["maps"].sum()))
-c3.metric("Places created", int(df["places"].sum()))
+c1.metric("Publishes", len(rows))
+c2.metric("Maps created", sum(maps_count(r) for r in rows))
+c3.metric("Places created", sum(places_count(r) for r in rows))
 
 c4, c5, c6 = st.columns(3)
-c4.metric("Distinct trips", df["trip_name"].nunique())
-c5.metric("Maps this month", int(df.loc[this_month, "maps"].sum()))
-c6.metric("Places this month", int(df.loc[this_month, "places"].sum()))
+c4.metric("Distinct trips", len({r.get("trip_name", "") for r in rows}))
+c5.metric("Maps this month", sum(maps_count(r) for r in this_month_rows))
+c6.metric("Places this month", sum(places_count(r) for r in this_month_rows))
 
-# --- Over-time chart ---
-by_day = (
-    df.dropna(subset=["created_at"])
-    .assign(day=lambda d: d["created_at"].dt.date)
-    .groupby("day")
-    .size()
-    .rename("publishes")
-)
-if not by_day.empty:
-    st.subheader("Publishes over time")
-    st.bar_chart(by_day)
-
-# --- Table (newest first) ---
+# --- Log (newest first) ---
 st.subheader("Log")
-titles = dict(COLUMNS)
-table = (
-    df.sort_values("created_at", ascending=False)
-    .assign(map_links=lambda d: d["map_links"].str.split("\n"))
-    .loc[:, [key for key, _ in COLUMNS]]
-    .rename(columns=titles)
-)
-st.dataframe(
-    table,
-    width="stretch",
-    hide_index=True,
-    column_config={
-        titles["created_at"]: st.column_config.DatetimeColumn(format="YYYY-MM-DD HH:mm"),
-        titles["maps"]: st.column_config.NumberColumn(width="small"),
-        titles["places"]: st.column_config.NumberColumn(width="small"),
-        titles["map_links"]: st.column_config.ListColumn(width="large"),
-    },
-)
+for row in sorted(rows, key=lambda r: r.get("created_at", ""), reverse=True):
+    links = [line for line in row.get("map_links", "").splitlines() if line.strip()]
+    link_md = " · ".join(f"[Map {i + 1}]({url})" for i, url in enumerate(links)) or "—"
+    st.markdown(
+        f"**{row.get('trip_name') or '(unnamed)'}** — {row.get('created_at', '')}  \n"
+        f"{maps_count(row)} map(s), {places_count(row)} place(s) — {link_md}"
+    )
 
 sheet_id = _sheet_id()
 left, right = st.columns([3, 1])
