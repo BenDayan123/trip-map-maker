@@ -70,16 +70,19 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v6
 
-      # Use a genuinely x86_64-ONLY Python (python-build-standalone via uv), not a
-      # universal2 one -- so pip resolves x86_64 wheels unambiguously (the arm64
-      # cryptography wheel was what broke the universal2+`arch` approach) and
-      # PyInstaller freezes a clean Intel app. The x86_64 interpreter runs on the
-      # arm64 runner via Rosetta. build_app.sh auto-sources ./.venv, so its bare
-      # `python`/`pyinstaller` calls hit this env with no arch juggling.
+      # Use uv only to fetch a genuinely x86_64-ONLY Python (python-build-
+      # standalone); it runs on the arm64 runner via Rosetta. Install packages
+      # with the venv's OWN pip so the installer runs AS x86_64 -- host==target,
+      # native resolution grabs x86_64 wheels. (Running `uv pip` here instead makes
+      # the arm64 uv binary cross-resolve and source-build cryptography, which
+      # fails needing x86_64 OpenSSL.) build_app.sh auto-sources ./.venv, so its
+      # bare `python`/`pyinstaller` calls hit this env with no arch juggling.
       - name: Create x86_64 env + install deps
         run: |
           uv venv --python cpython-3.11-macos-x86_64 .venv
-          uv pip install --python .venv/bin/python -r requirements.txt pyinstaller
+          .venv/bin/python -m ensurepip --upgrade
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install -r requirements.txt pyinstaller
 
       - name: Build the x86_64 .app
         run: |
