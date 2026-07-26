@@ -1,19 +1,21 @@
 name: Build macOS app
 
-# Builds a UNIVERSAL2 TripMapMaker.app + .dmg (runs natively on Intel AND Apple
-# Silicon) AND a standalone Intel-only .dmg (TripMapMaker-macos-intel.dmg) from
-# the native x86_64 leg. Run by hand (Actions -> Run workflow), or push a v* tag
-# to also publish both .dmg files to a GitHub Release.
+# Builds a standalone Intel-only .dmg (TripMapMaker-macos-intel.dmg) AND, when
+# both arch builds succeed, a UNIVERSAL2 .dmg (runs on Intel + Apple Silicon).
+# Run by hand (Actions -> Run workflow), or push a v* tag to also publish the
+# .dmg files to a GitHub Release.
 #
-# No Mac needed to build: GitHub's macos-13 runner is Intel and does it in CI.
-# The Intel .dmg comes straight from the x86_64 build job, so it exists even if
-# the universal `merge` job below can't get a runner.
+# No Mac needed to build -- it all runs in CI.
 #
-# PyInstaller can't emit universal2 directly here (numpy/pyarrow ship arch-only
-# wheels, no fat wheel to bundle). So we build the app natively on each arch and
-# lipo them together in the `merge` job — see merge_universal.sh. The Intel leg
-# needs the macos-13 runner; if it can't allocate, the merge fails and you fall
-# back to the per-arch artifacts this workflow still uploads.
+# Why the x86_64 leg cross-builds on Apple Silicon: GitHub is retiring the Intel
+# `macos-13` runner, so it queues for many minutes or fails to allocate. Instead
+# the `build_intel` job runs on the fast `macos-14` (arm64) runner and builds a
+# real x86_64 app under Rosetta 2 -- install the universal2 python.org Python,
+# then run the whole freeze under `arch -x86_64` so PyInstaller bundles the
+# x86_64 slice. (PyInstaller is not a cross-compiler, but running the toolchain
+# translated by Rosetta produces a genuine Intel binary.) The universal .dmg
+# still needs both slices to lipo-merge; if either leg fails you still get the
+# per-arch .app artifacts and, from build_intel, the standalone Intel .dmg.
 on:
   workflow_dispatch:
   push:
@@ -23,18 +25,13 @@ on:
 permissions:
   contents: write # needed for the release step on tags
 
+env:
+  PYVER: "3.11.9"
+
 jobs:
-  build:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: macos-14 # Apple Silicon
-            arch: arm64
-          - runner: macos-13 # Intel
-            arch: x86_64
-    runs-on: ${{ matrix.runner }}
-    name: build (${{ matrix.arch }})
+  build_arm64:
+    runs-on: macos-14 # Apple Silicon
+    name: build (arm64)
     steps:
       - uses: actions/checkout@v4
 
@@ -52,30 +49,76 @@ jobs:
       - name: Build the native .app
         run: |
           chmod +x build_app.sh
-          ./build_app.sh   # native arch; ad-hoc signs (re-signed after merge)
+          ./build_app.sh # native arm64; ad-hoc signs (re-signed after merge)
 
       - name: Tar the .app (preserve perms/symlinks for the merge job)
-        run: tar -czpf "app-${{ matrix.arch }}.tar.gz" -C dist "My Maps Generator.app"
+        run: tar -czpf "app-arm64.tar.gz" -C dist "My Maps Generator.app"
 
       - name: Upload the native .app
         uses: actions/upload-artifact@v4
         with:
-          name: app-${{ matrix.arch }}
-          path: app-${{ matrix.arch }}.tar.gz
+          name: app-arm64
+          path: app-arm64.tar.gz
           if-no-files-found: error
 
-      # Package a standalone Intel .dmg straight from the native x86_64 leg, so
-      # there is always a guaranteed Intel installer even if the universal merge
-      # job can't allocate a runner. Runs on Rosetta 2 on Apple Silicon too.
+  build_intel:
+    runs-on: macos-14 # Apple Silicon runner; we cross-build x86_64 under Rosetta
+    name: build (x86_64 via Rosetta)
+    env:
+      PYBIN: /Library/Frameworks/Python.framework/Versions/3.11/bin
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rosetta 2
+        run: softwareupdate --install-rosetta --agree-to-license
+
+      # setup-python ships arm64-only on Apple Silicon. The python.org macOS
+      # installer is universal2, so `arch -x86_64 python3.11` runs the Intel
+      # slice and pip then pulls x86_64 wheels.
+      - name: Install universal2 Python ${{ env.PYVER }}
+        run: |
+          curl -fLo python.pkg "https://www.python.org/ftp/python/${PYVER}/python-${PYVER}-macos11.pkg"
+          sudo installer -pkg python.pkg -target /
+          # build_app.sh calls bare `python`; point it at the framework interpreter.
+          sudo ln -sf "$PYBIN/python3.11" /usr/local/bin/python
+
+      - name: Install dependencies as x86_64
+        run: |
+          arch -x86_64 "$PYBIN/python3.11" -m pip install --upgrade pip
+          arch -x86_64 "$PYBIN/python3.11" -m pip install -r requirements.txt pyinstaller
+
+      - name: Build the x86_64 .app (Rosetta)
+        run: |
+          export PATH="$PYBIN:$PATH"
+          chmod +x build_app.sh
+          # arch -x86_64 makes the universal2 python/pyinstaller run as Intel;
+          # child processes inherit the x86_64 preference, so the frozen app is x86_64.
+          arch -x86_64 ./build_app.sh
+
+      - name: Verify the app is x86_64
+        run: |
+          BIN="dist/My Maps Generator.app/Contents/MacOS/My Maps Generator"
+          ARCHS="$(lipo -archs "$BIN")"
+          echo "archs: $ARCHS"
+          case "$ARCHS" in *x86_64*) ;; *) echo "::error::app is not x86_64 ($ARCHS)"; exit 1;; esac
+
+      - name: Tar the .app (preserve perms/symlinks for the merge job)
+        run: tar -czpf "app-x86_64.tar.gz" -C dist "My Maps Generator.app"
+
+      - name: Upload the native .app
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-x86_64
+          path: app-x86_64.tar.gz
+          if-no-files-found: error
+
       - name: Package the Intel .dmg
-        if: matrix.arch == 'x86_64'
         run: |
           chmod +x build_dmg.sh
           ./build_dmg.sh
           mv TripMapMaker.dmg "TripMapMaker-macos-intel.dmg"
 
       - name: Upload the Intel installer
-        if: matrix.arch == 'x86_64'
         uses: actions/upload-artifact@v4
         with:
           name: TripMapMaker-macos-intel
@@ -83,13 +126,13 @@ jobs:
           if-no-files-found: error
 
       - name: Attach the Intel installer to the release (tags only)
-        if: matrix.arch == 'x86_64' && startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: TripMapMaker-macos-intel.dmg
 
   merge:
-    needs: build
+    needs: [build_arm64, build_intel]
     runs-on: macos-14
     name: merge universal + package
     steps:
