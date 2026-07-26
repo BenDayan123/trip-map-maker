@@ -94,7 +94,8 @@ def render_usage_gauges() -> None:
     # geocoded map is created (which pops "usage"). Keeps Monitoring requests to a
     # minimum. Settings changes on the Setup page also pop it to force a refresh.
     if "usage" not in st.session_state:
-        st.session_state["usage"] = _compute_usage()
+        with st.spinner("Checking API usage…"):  # blocking Monitoring call
+            st.session_state["usage"] = _compute_usage()
     usage = st.session_state["usage"]
     if usage is None:
         st.caption("📊 API usage metrics not configured.")
@@ -172,12 +173,15 @@ def render_update_banner() -> None:
 def make_map_page() -> None:
     """The main "Make Map" page: upload an itinerary, generate KML, optionally publish."""
     # --- Header -----------------------------------------------------------
-    render_update_banner()
+    # Paint the title/caption BEFORE the update check so the window shows content
+    # immediately instead of a blank frozen frame while the network call runs
+    # (the packaged pywebview app otherwise reads as "laggy" on launch).
     st.title("🗺️ My Maps Generator")
     st.caption(
         "Upload a travel itinerary (PDF or TXT) and get Google My Maps KML files — "
         "each day a colored layer with numbered pins."
     )
+    render_update_banner()
 
     # --- Sidebar: usage gauges + options ----------------------------------
     with st.sidebar:

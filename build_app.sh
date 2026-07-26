@@ -17,19 +17,26 @@ if [ -d ".venv/bin" ]; then
   source ".venv/bin/activate"
 fi
 
-python -c "import streamlit_desktop_app" 2>/dev/null || python -m pip install streamlit-desktop-app
+python -c "import PyInstaller" 2>/dev/null || python -m pip install pyinstaller
 
-streamlit-desktop-app build streamlit_app.py --name "My Maps Generator" \
+# Freeze desktop.py (our launcher — bounded shutdown so the window actually
+# quits) instead of the streamlit-desktop-app wrapper, whose join()-with-no-
+# timeout hangs the app on close. Flags mirror what that wrapper passed:
+# --collect-all/--copy-metadata streamlit + streamlit_app.py bundled as data.
+pyinstaller --noconfirm --windowed --name "My Maps Generator" \
   --icon icon.icns \
-  --pyinstaller-options --noconfirm --windowed \
-    --collect-all playwright \
-    --collect-all google \
-    --collect-all googleapiclient \
-    --collect-all google_auth_oauthlib \
-    --collect-all gspread \
-    --add-data "gmap_planner:gmap_planner" \
-    --add-data "pages:pages" \
-  --streamlit-options --theme.base=light "--theme.primaryColor=#2563EB"
+  --paths . \
+  --collect-all streamlit \
+  --copy-metadata streamlit \
+  --collect-all playwright \
+  --collect-all google \
+  --collect-all googleapiclient \
+  --collect-all google_auth_oauthlib \
+  --collect-all gspread \
+  --add-data "streamlit_app.py:." \
+  --add-data "gmap_planner:gmap_planner" \
+  --add-data "pages:pages" \
+  desktop.py
 
 # Trim ~90MB of unused Google API discovery docs; keep only Drive (the only API
 # this app calls via googleapiclient). Safe: build('drive','v3') reads these.

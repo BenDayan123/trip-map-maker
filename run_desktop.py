@@ -5,22 +5,21 @@ app straight from source: no PyInstaller freeze, no Inno Setup step, ~seconds to
 start, and hot-reload on save. Use this for day-to-day development instead of
 build_exe.bat / build_installer.bat (those are only for producing the installer).
 
-    pip install -r requirements.txt streamlit-desktop-app   # once
+    pip install -r requirements.txt   # once
     python run_desktop.py
 
-The theme flags mirror the packaged build so the window looks identical, and
-server.runOnSave makes edits reload automatically.
+Uses the same desktop.py launcher the packaged .app is frozen from (bounded
+shutdown so closing the window actually quits), with server.runOnSave for
+hot-reload on save.
 """
 
-from streamlit_desktop_app import start_desktop_app
+import multiprocessing
+
+import desktop
 
 if __name__ == "__main__":
-    start_desktop_app(
-        "streamlit_app.py",
+    multiprocessing.freeze_support()
+    desktop.start(
+        options={"server.runOnSave": "true"},  # auto-reload on file save
         title="My Maps Generator (dev)",
-        options={
-            "theme.base": "light",
-            "theme.primaryColor": "#2563EB",
-            "server.runOnSave": "true",  # auto-reload on file save
-        },
     )

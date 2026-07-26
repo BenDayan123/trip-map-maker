@@ -13,6 +13,10 @@ The intended setup for a single admin: a **Windows installer** (`TripMapMaker-Se
 (needs [Inno Setup 6](https://jrsoftware.org/isdl.php)). Full admin steps:
 **[SETUP.md](SETUP.md)**.
 
+There's also a **macOS** build (`.dmg`, Apple Silicon) produced by the
+`Build macOS app` workflow. It isn't notarized, so the first launch needs a
+one-time approval — see **[INSTALL_MACOS.md](INSTALL_MACOS.md)**.
+
 ## Two ways to use it
 
 ### Web GUI (Streamlit)

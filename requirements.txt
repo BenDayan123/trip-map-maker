@@ -10,3 +10,6 @@ google-auth-oauthlib>=1.0
 gspread>=6.0
 # In-app updater (GitHub Releases) — also pulled transitively by google-auth
 requests>=2.28
+# Desktop window for the frozen app (see desktop.py). Was transitive via
+# streamlit-desktop-app, which the mac build no longer uses.
+pywebview>=5.0
