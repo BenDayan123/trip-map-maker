@@ -60,6 +60,17 @@ if [ -d "$API_PROTO" ]; then
   find "$API_PROTO" -type d -name '__pycache__' -exec rm -rf {} +
 fi
 
+# Ad-hoc codesign so Gatekeeper doesn't reject the unsigned app as "damaged" on
+# Apple Silicon (no paid Developer ID — users still do a one-time Open Anyway,
+# see INSTALL_MACOS.md). Signing the whole bundle also covers a build made in an
+# Intel VM (native arch = x86_64), which then runs on Intel + Apple Silicon (via
+# Rosetta 2). Done here so both the CI workflow and a local/VM build get a signed
+# app from one place.
+APP="dist/My Maps Generator.app"
+echo "Ad-hoc codesigning $APP ..."
+codesign --force --deep --sign - "$APP"
+codesign --verify --deep --strict "$APP"
+
 echo
-echo "Done. App bundle: dist/My Maps Generator.app"
+echo "Done. App bundle: $APP  ($(lipo -archs "$APP/Contents/MacOS/My Maps Generator" 2>/dev/null || echo '?'))"
 echo "Run ./build_dmg.sh to wrap it into a distributable .dmg."

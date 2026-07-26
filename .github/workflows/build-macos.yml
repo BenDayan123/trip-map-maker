@@ -37,12 +37,7 @@ jobs:
       - name: Build the .app and .dmg
         run: |
           chmod +x build_app.sh build_dmg.sh
-          ./build_app.sh
-          # Ad-hoc sign so Apple Silicon doesn't reject the unsigned app as
-          # "damaged". No Developer ID/notarization (paid) — users still do a
-          # one-time right-click → Open, but the app is no longer "damaged".
-          codesign --force --deep --sign - "dist/My Maps Generator.app"
-          codesign --verify --deep --strict "dist/My Maps Generator.app"
+          ./build_app.sh          # ad-hoc codesign now happens inside build_app.sh
           ./build_dmg.sh
           mv TripMapMaker.dmg "TripMapMaker-macos-arm64.dmg"
 
