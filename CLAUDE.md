@@ -34,7 +34,7 @@ a `token.json` is cached after first consent. Both are gitignored, as is `.pw-pr
 - **`config.py`** — constants: `GEMINI_MODEL`, `MAX_LAYERS_PER_FILE`, `GEOCODE_URL`.
 - **`prompt.py`** — `GEMINI_EXTRACTION_PROMPT`: JSON schema + extraction rules (every location, Hebrew notes, `lat`/`lng` from world knowledge, `DD/MM` dates). Written for the real input: a Hebrew/RTL document whose place names are Hebrew, English or the local language, mixed mid-sentence. It enumerates the place types to collect (shops, streets, markets, nature reserves, temples, malls, viewpoints, hotels, airports, …), demands places hidden in tables/parentheses/footnotes/alternatives, splits compound mentions, and fixes `name` to the form the Geocoding API resolves (`"Nishiki Market, Kyoto"`), translating a Hebrew-written foreign name to the name Google Maps knows. Measured on `tests/plan.pdf` 92 → 115 places and `tests/plan2.pdf` 60 → 155 versus the previous prompt.
 - **`cli.py`** — `parse_args`, `resolve_api_key`.
-- **`gemini.py`** — `load_file_for_gemini` (TXT inline; PDF via `client.files.upload()`, no local parsing) + `extract_itinerary` (calls Gemini with `response_mime_type="application/json"` → `{trip_name, days: [{day, date, locations: [{name, lat, lng, notes}]}]}`; Gemini coords are rough, off 50–300m). Guards against the intermittent "invalid JSON": a `response_schema`, `max_output_tokens=32768` (the default cap truncated long trips mid-object — thinking tokens share that budget), and one retry of the whole call (`ATTEMPTS`) for a truncated, empty or field-less response. Error messages carry the `finish_reason`, never the raw body. `gmap_planner/test_gemini_extract.py` covers the retry with a fake client.
+- **`gemini.py`** — `load_file_for_gemini` (TXT inline; PDF via `client.files.upload()`, no local parsing) + `extract_itinerary` (calls Gemini with `response_mime_type="application/json"` → `{trip_name, days: [{day, date, locations: [{name, lat, lng, notes}]}]}`; Gemini coords are rough, off 50–300m). Guards against the intermittent "invalid JSON": a `response_schema` plus one retry of the whole call (`ATTEMPTS`) when the *body* is unusable — truncated, empty, or missing `trip_name`/`days` (`_BadResponse`). A failed **request** (bad key, quota, network) is not retried: it fails the same way twice and re-uploads the whole itinerary. `max_output_tokens` is deliberately left unset — unset means the model's own maximum (65536 for `gemini-3.1-flash-lite`), so any value set here could only lower the ceiling. Error messages carry the `finish_reason`, never the raw body. `gmap_planner/test_gemini_extract.py` covers both retry and no-retry paths with a fake client.
 - **`geocode.py`** — `geocode_place` / `geocode_itinerary`: snap each name to exact coords via **Geocoding API** (`maps/api/geocode/json?address=`). Falls back to Gemini coords on failure. Skipped with `--no-geocode`.
 - **`kml.py`** — `sanitize_folder_name` (trip name → safe folder), `chunk_days` (chunks of ≤ `layers_per_file`, capped at `MAX_LAYERS_PER_FILE = 10`), `numbered_pin_href` (Google `vt/icon` 3-layer stack → solid teardrop pin tinted with the day's color, stop number drawn in solid white, any count), `build_kml_file` (one `<Document>`, each day a `<Folder>`, numbered pin icons, `lng,lat,0`), `write_kml_files` (`{first}.kml` or `{first}-{last}.kml`).
 - **`pipeline.py`** — `main` + `print_summary`: wires the stages, writes each trip's KML into `<output-dir>/<trip_name>/`. When `--share` is given, calls `publish._publish` afterwards; `--login` short-circuits to `mymaps.login`.
@@ -75,20 +75,33 @@ mac-only breakage that was fixed rather than theory:
   playwright` to fill one, so publishing worked only where Chrome happened to be
   installed. `build_app.sh` runs `PLAYWRIGHT_BROWSERS_PATH=0 playwright install chromium`
   *before* PyInstaller so `--collect-all playwright` bundles the browser (~150MB), then
-  restores the exec bits PyInstaller drops on the node driver + browser binaries. CI fails
-  the build if `.local-browsers` didn't make it in; `ensure_chromium()` downloads as a
-  fallback.
+  restores the exec bits PyInstaller drops on the node driver + browser binaries.
+  `check_bundled_chromium` then **launches** that browser headless and fails the build if
+  it doesn't run — a directory-exists check would pass for a browser PyInstaller mangled,
+  left non-executable, or left with an invalid nested signature (which Apple Silicon
+  kills on sight). It also asserts the browser sits exactly where `_browsers_path()`
+  looks. `ensure_chromium()` downloads as a runtime fallback. The **Windows** installer
+  bundles no browser on purpose (Edge ships with Windows), so `ensure_chromium()` returns
+  early when frozen there instead of downloading 150MB it would never use.
 - **Shutdown**: pywebview's Cocoa runtime and multiprocessing's spawn machinery leave
   non-daemon threads alive, so returning from `desktop.start()` hung the process with the
   window already gone ("can't quit the app"). It reaps the Streamlit child and then
-  `os._exit(0)` on every path. `desktop.py --selfcheck` runs that start→stop cycle and is
-  executed against the built `.app` in CI.
+  `os._exit(0)` on every path (`1` + a traceback in `data_dir/last_error.log` when the
+  start failed — a windowed `.app` has nowhere to print, so without it a failed launch
+  just vanishes). `desktop.py --selfcheck` runs the start→stop cycle and is executed
+  against the built `.app` in CI, but it does **not** open a window, so a pywebview/Cocoa
+  regression still needs a real Mac.
 - **Codesign**: `codesign --verify --deep --strict` trips on the nested Chromium.app after
-  PyInstaller's copy — the top-level verify is the gate, the deep one only warns.
+  PyInstaller's copy — the top-level verify is the gate, the deep one only warns. The
+  thing that actually catches a broken nested signature is the Chromium launch above.
 - **pywebview**: `--collect-all webview` is required (its `webview/js/*.js` are runtime
   data files).
 - **Updater**: a release ships both an Intel and a universal `.dmg`, so
   `updater._platform_asset` picks by CPU instead of taking the first `.dmg`.
+- **Universal merge**: `merge_universal.sh` now also lipos two full Chromium trees, and
+  its per-file fallback is "keep the arm64 copy" — which would hand an Intel user a
+  browser that can't start. It asserts the bundled Chromium came out fat and prints the
+  merged app's size (the `.dmg` is what the updater downloads).
 
 ## Key design decisions
 

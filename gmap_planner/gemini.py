@@ -42,13 +42,22 @@ _RESPONSE_SCHEMA = types.Schema(
 )
 
 
-# Room for a long itinerary *plus* the model's thinking tokens, which come out of
-# the same budget: the default output cap is what truncates a big trip mid-JSON,
-# and a truncated response is invalid JSON no schema can save.
-MAX_OUTPUT_TOKENS = 32768
 # A bad response is usually a one-off (truncation, a blocked/empty candidate), and
 # sampling is stochastic, so one plain retry fixes most of them.
 ATTEMPTS = 2
+# NB: max_output_tokens is deliberately NOT set — unset means the model's own
+# maximum (65536 for gemini-3.1-flash-lite, `client.models.get(...)`), and any
+# value we pick here can only lower the ceiling and cause the mid-JSON truncation
+# this retry exists to survive.
+
+
+class _BadResponse(PipelineError):
+    """The call succeeded but its body is unusable (truncated, empty, wrong shape).
+
+    Marker for the one failure that's worth retrying: a transport/auth/quota error
+    fails the same way every time, so retrying it just doubles the wait and the
+    input tokens.
+    """
 
 
 def _finish_reason(response) -> str:
@@ -77,7 +86,8 @@ def load_file_for_gemini(file_path: str, client: genai.Client) -> tuple[list, st
 
 
 def _extract_once(parts: list, client: genai.Client) -> dict:
-    """One extraction call. Raises PipelineError if the response isn't usable."""
+    """One extraction call. Raises _BadResponse for an unusable body, PipelineError
+    for a failed request."""
     response = None
     try:
         response = client.models.generate_content(
@@ -86,7 +96,6 @@ def _extract_once(parts: list, client: genai.Client) -> dict:
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
                 response_schema=_RESPONSE_SCHEMA,
-                max_output_tokens=MAX_OUTPUT_TOKENS,
             ),
         )
         data = json.loads(response.text)
@@ -94,17 +103,15 @@ def _extract_once(parts: list, client: genai.Client) -> dict:
         # response_schema makes this rare; when it still happens it's usually a
         # truncated (MAX_TOKENS) or blocked (SAFETY) response, not real prose.
         # Report the cause, never the raw JSON body.
-        raise PipelineError(
+        raise _BadResponse(
             "Gemini API (location extraction) returned invalid/empty JSON "
             f"(finish_reason: {_finish_reason(response)})."
         ) from e
-    except PipelineError:
-        raise
     except Exception as e:
         raise PipelineError(f"Gemini API (location extraction) request failed: {e}") from e
 
     if not isinstance(data, dict) or "trip_name" not in data or "days" not in data:
-        raise PipelineError(
+        raise _BadResponse(
             "Gemini API (location extraction) response is missing required "
             "fields ('trip_name', 'days')."
         )
@@ -112,12 +119,16 @@ def _extract_once(parts: list, client: genai.Client) -> dict:
 
 
 def extract_itinerary(parts: list, client: genai.Client) -> dict:
-    """Extract the itinerary, retrying once on an unusable response."""
-    last: PipelineError
+    """Extract the itinerary, retrying once on an unusable response body.
+
+    A failed *request* (bad key, quota, network) is raised on the first attempt —
+    retrying it would only double the wait and re-upload the whole itinerary.
+    """
+    last = PipelineError("Gemini API (location extraction) was never called.")
     for attempt in range(ATTEMPTS):
         try:
             return _extract_once(parts, client)
-        except PipelineError as e:
+        except _BadResponse as e:
             last = e
             if attempt + 1 < ATTEMPTS:
                 print(f"  [gemini] {e} Retrying…", flush=True)

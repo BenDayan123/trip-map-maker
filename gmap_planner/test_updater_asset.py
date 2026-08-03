@@ -23,6 +23,9 @@ ASSETS = [
 
 
 def pick(assets, plat, machine="arm64"):
+    # NB: `updater.sys` IS the global sys module, so this swaps sys.platform
+    # process-wide for the duration of the call. Fine for a standalone script;
+    # the finally restores both before anything else looks at them.
     old = (updater.sys.platform, platform.machine)
     try:
         updater.sys.platform = plat
@@ -47,6 +50,13 @@ def test_falls_back_to_any_dmg():
     assert pick(only, "darwin", "x86_64") == "TripMapMaker.dmg"
 
 
+def test_intel_takes_universal_over_an_arm64_only_build():
+    # A release without an Intel .dmg must not hand Intel the arm64 one.
+    assets = [{"name": "TripMapMaker-macos-arm64.dmg"},
+              {"name": "TripMapMaker-macos-universal.dmg"}]
+    assert pick(assets, "darwin", "x86_64") == "TripMapMaker-macos-universal.dmg"
+
+
 def test_windows_still_gets_the_exe():
     assert pick(ASSETS, "win32") == "TripMapMaker-Setup.exe"
 
@@ -60,6 +70,7 @@ if __name__ == "__main__":
     test_apple_silicon_gets_the_universal_dmg()
     test_intel_mac_gets_the_intel_dmg()
     test_falls_back_to_any_dmg()
+    test_intel_takes_universal_over_an_arm64_only_build()
     test_windows_still_gets_the_exe()
     test_no_asset_for_this_os()
     print("ok")

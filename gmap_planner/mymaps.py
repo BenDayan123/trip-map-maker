@@ -110,8 +110,16 @@ def ensure_chromium() -> None:
     _chromium_ready = True  # one attempt per process, success or not
     if os.environ.get("PLAYWRIGHT_BROWSERS_PATH") == "0":
         return  # bundled in the app at build time — nothing to fetch
+    if getattr(sys, "frozen", False) and sys.platform.startswith("win"):
+        # The Windows installer doesn't bundle a browser and doesn't need to:
+        # Edge ships with Windows, so _launch_persistent always finds a channel.
+        # Downloading ~150MB here would block the UI for a browser never used.
+        return
     try:
         if getattr(sys, "frozen", False):
+            # No `python -m playwright` in a frozen app — call the driver CLI.
+            # compute_driver_executable() returns (node, cli.js) since playwright
+            # 1.40, which is the floor in requirements.txt.
             from playwright._impl._driver import (
                 compute_driver_executable,
                 get_driver_env,
@@ -122,7 +130,11 @@ def ensure_chromium() -> None:
         else:
             cmd, env = [sys.executable, "-m", "playwright", "install", "chromium"], None
         _log("checking Playwright's Chromium (first run may download it)…")
-        subprocess.run(cmd, check=True, capture_output=True, text=True, env=env)
+        # timeout: this runs inside a Streamlit script run behind a spinner, so a
+        # stalled download must not hang the UI forever.
+        subprocess.run(
+            cmd, check=True, capture_output=True, text=True, env=env, timeout=900
+        )
     except Exception as e:  # best-effort — the launch step reports a clear error
         _log(f"'playwright install chromium' did not complete: {e}")
 

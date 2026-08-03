@@ -59,6 +59,33 @@ def test_valid_json_missing_the_required_fields_is_retried():
     assert client.calls == 2
 
 
+class ExplodingClient:
+    """generate_content itself fails — a transport/auth/quota error, not a bad body."""
+
+    def __init__(self):
+        self.calls = 0
+        client = self
+
+        class Models:
+            def generate_content(self, **_kw):
+                client.calls += 1
+                raise RuntimeError("429 RESOURCE_EXHAUSTED")
+
+        self.models = Models()
+
+
+def test_a_failed_request_is_not_retried():
+    # Retrying a quota/auth failure only doubles the wait and re-uploads the PDF.
+    client = ExplodingClient()
+    try:
+        extract_itinerary([], client)
+    except PipelineError as e:
+        assert "request failed" in str(e), e
+    else:
+        raise AssertionError("expected PipelineError")
+    assert client.calls == 1, client.calls
+
+
 def test_two_bad_responses_raise_a_clean_error():
     client = FakeClient("not json", "still not json")
     try:
@@ -77,5 +104,6 @@ if __name__ == "__main__":
     test_truncated_json_is_retried()
     test_empty_response_is_retried()
     test_valid_json_missing_the_required_fields_is_retried()
+    test_a_failed_request_is_not_retried()
     test_two_bad_responses_raise_a_clean_error()
     print("ok")

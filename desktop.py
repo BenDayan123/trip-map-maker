@@ -19,7 +19,6 @@ Run from source with ``python run_desktop.py``; frozen into the .app by
 """
 from __future__ import annotations
 
-import atexit
 import multiprocessing
 import os
 import signal
@@ -112,6 +111,23 @@ def _shutdown(proc: multiprocessing.Process) -> None:
         proc.join(JOIN_TIMEOUT)
 
 
+def _log_crash() -> str | None:
+    """Write the current traceback next to the app's data files and return the path.
+
+    Also prints it, for the case where a terminal is attached.
+    """
+    traceback.print_exc()
+    try:
+        from gmap_planner.paths import data_path
+
+        path = data_path("last_error.log")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')}\n{traceback.format_exc()}")
+        return path
+    except Exception:
+        return None
+
+
 def _spawn(options: Dict[str, str]) -> "tuple[multiprocessing.Process, int]":
     port = _free_port()
     proc = multiprocessing.Process(
@@ -125,10 +141,7 @@ def start(options: Optional[Dict[str, str]] = None, title: str = TITLE) -> None:
     """Launch Streamlit in a child process inside a pywebview window."""
     opts = {**THEME, **(options or {})}
     proc, port = _spawn(opts)
-    # On macOS pywebview terminates the Cocoa app on window close and may not
-    # return from webview.start(), so the finally below can be skipped — atexit
-    # still reaps the setsid-detached child. _shutdown() is idempotent.
-    atexit.register(_shutdown, proc)
+    failed = False
     try:
         _wait_for_server(port)
         import webview
@@ -138,7 +151,10 @@ def start(options: Optional[Dict[str, str]] = None, title: str = TITLE) -> None:
         )
         webview.start()
     except Exception:
-        traceback.print_exc()  # log it; the finally below still exits cleanly
+        # A windowed .app has nowhere to print: without this the app would just
+        # vanish (no window, no message, no crash report) on a failed start.
+        failed = True
+        _log_crash()
     finally:
         # Hard exit. On macOS the window closes but the process lingers —
         # pywebview's Cocoa/objc runtime and multiprocessing's spawn machinery
@@ -147,7 +163,7 @@ def start(options: Optional[Dict[str, str]] = None, title: str = TITLE) -> None:
         # keeps bouncing in the Dock. The Streamlit child is reaped first, so
         # there's nothing left to flush.
         _shutdown(proc)
-        os._exit(0)
+        os._exit(1 if failed else 0)
 
 
 def _selfcheck() -> None:

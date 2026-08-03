@@ -71,7 +71,22 @@ codesign --verify --strict "$OUT_APP"
 codesign --verify --deep --strict "$OUT_APP" \
   || echo "WARNING: deep verify failed (usually the bundled Chromium) — app signature itself is valid."
 
+# The bundled Chromium has to be fat too. Pass 1 leaves the arm64 copy in place
+# when lipo fails, which would ship an Intel user a browser that cannot start —
+# silently, since nothing else touches it until the first publish.
+CHROME="$(find "$OUT_APP" -path '*chrome-mac*/Chromium.app/Contents/MacOS/Chromium' -print -quit)"
+if [ -z "$CHROME" ]; then
+  echo "Error: no bundled Chromium in the merged app." >&2
+  exit 1
+fi
+CHROME_ARCHS="$(lipo -archs "$CHROME" 2>/dev/null || echo '?')"
+case "$CHROME_ARCHS" in
+  *x86_64*arm64* | *arm64*x86_64*) ;;
+  *) echo "Error: bundled Chromium is not universal ($CHROME_ARCHS)." >&2; exit 1 ;;
+esac
+
 BIN="$OUT_APP/Contents/MacOS/My Maps Generator"
 echo
-echo "Done. Universal app: $OUT_APP"
+echo "Done. Universal app: $OUT_APP  ($(du -sh "$OUT_APP" | cut -f1))"
 echo "  arch: $(lipo -archs "$BIN" 2>/dev/null || echo '?')"
+echo "  bundled Chromium: $CHROME_ARCHS"

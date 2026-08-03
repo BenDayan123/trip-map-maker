@@ -86,10 +86,12 @@ def _platform_asset(assets: list[dict]) -> dict | None:
     elif sys.platform == "darwin":
         exts = (".dmg",)
         # Rosetta reports x86_64, which is right: an Intel build is what runs.
+        # Both lists end with "universal" so a release that drops the per-arch
+        # .dmg still resolves, instead of falling through to the other arch.
         prefer = (
             ("universal", "arm64")
             if platform.machine() == "arm64"
-            else ("intel", "x86_64")
+            else ("intel", "x86_64", "universal")
         )
     else:
         return None

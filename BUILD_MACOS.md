@@ -12,13 +12,21 @@ Mac counterpart of `build_exe.bat` / `build_installer.bat`. Produces
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt streamlit-desktop-app
+pip install -r requirements.txt
 ```
+
+(No `streamlit-desktop-app` here — unlike the Windows build, `build_app.sh`
+freezes our own `desktop.py` launcher and never imports it.)
 
 `build_app.sh` installs Chromium itself (with `PLAYWRIGHT_BROWSERS_PATH=0`, so it
 lands inside the `playwright` package and gets bundled into the `.app`, ~150MB).
 Users then need no browser of their own — don't run a plain `playwright install`
 first, that one goes to `~/Library/Caches/ms-playwright` and is *not* packaged.
+The build then launches the bundled Chromium headless and **fails** if it doesn't
+run, so a mangled copy, a missing exec bit, or a bad ad-hoc signature can't ship.
+(Note `PLAYWRIGHT_BROWSERS_PATH=0` installs into your `site-packages`, and
+`--collect-all playwright` bundles whatever browsers are in there — if you ever
+ran it without the `chromium` argument you'll be shipping firefox and webkit too.)
 
 ## Build
 

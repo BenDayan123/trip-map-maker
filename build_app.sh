@@ -78,11 +78,6 @@ fi
 APP="dist/My Maps Generator.app"
 echo "Restoring exec bits on the bundled Playwright driver/browser..."
 find "$APP" -type d -name driver -path '*playwright*' -exec chmod -R a+x {} +
-if [ -z "$(find "$APP" -type d -name '.local-browsers' -print -quit)" ]; then
-  echo "WARNING: Chromium was not bundled into the app — it will be downloaded on"
-  echo "         first publish instead (needs internet). Check the playwright"
-  echo "         install step above."
-fi
 
 # Ad-hoc codesign so Gatekeeper doesn't reject the unsigned app as "damaged" on
 # Apple Silicon (no paid Developer ID — users still do a one-time Open Anyway,
@@ -98,6 +93,39 @@ codesign --force --deep --sign - "$APP"
 codesign --verify --strict "$APP"
 codesign --verify --deep --strict "$APP" \
   || echo "WARNING: deep verify failed (usually the bundled Chromium) — app signature itself is valid."
+
+# Prove the bundled browser actually works, rather than that a directory with the
+# right name exists. Runs AFTER codesign on purpose: an invalid ad-hoc signature
+# on a nested Mach-O is killed on sight by Apple Silicon, and this launch is the
+# check that catches it (the deep verify above only warns). Also catches the
+# exec bits, a wrong arch, and a browser PyInstaller mangled on the way in.
+check_bundled_chromium() {
+  local app="$1" browsers="" base
+  # Must be where the runtime looks: sys._MEIPASS/playwright/... (_browsers_path
+  # in gmap_planner/mymaps.py). _MEIPASS is Contents/Frameworks on PyInstaller 6,
+  # Contents/MacOS on 5 — anything else and the app downloads its own copy.
+  for base in "$app/Contents/Frameworks" "$app/Contents/MacOS" "$app/Contents/Resources"; do
+    if [ -d "$base/playwright/driver/package/.local-browsers" ]; then
+      browsers="$base/playwright/driver/package/.local-browsers"
+      break
+    fi
+  done
+  if [ -z "$browsers" ]; then
+    echo "Error: Chromium is not bundled where the app looks for it." >&2
+    echo "       Re-run with: PLAYWRIGHT_BROWSERS_PATH=0 python -m playwright install chromium" >&2
+    return 1
+  fi
+  local chrome
+  chrome="$(find "$browsers" -path '*chrome-mac*/Chromium.app/Contents/MacOS/Chromium' -print -quit)"
+  if [ -z "$chrome" ]; then
+    echo "Error: no Chromium binary under $browsers." >&2
+    return 1
+  fi
+  echo "Launching the bundled Chromium to verify it runs..."
+  "$chrome" --headless=new --disable-gpu --no-sandbox --dump-dom about:blank >/dev/null
+  echo "  ok: $(lipo -archs "$chrome" 2>/dev/null || echo '?')  $chrome"
+}
+check_bundled_chromium "$APP"
 
 echo
 echo "Done. App bundle: $APP  ($(lipo -archs "$APP/Contents/MacOS/My Maps Generator" 2>/dev/null || echo '?'))"
