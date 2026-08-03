@@ -42,6 +42,20 @@ def test_title_click_targets():
     assert targets[0].match("Trip (2026) [draft]")
 
 
+def test_browsers_path_prefers_the_bundled_browser():
+    # The packaged app must never fall back to the per-user ms-playwright cache
+    # while it ships a browser — "0" is what points Playwright inside the bundle.
+    original = mymaps._bundled_browsers_dir
+    try:
+        mymaps._bundled_browsers_dir = lambda: os.path.dirname(__file__)  # exists
+        assert mymaps._browsers_path() == "0"
+        mymaps._bundled_browsers_dir = lambda: os.path.join(os.path.dirname(__file__), "nope")
+        path = mymaps._browsers_path()
+        assert path.endswith("ms-playwright") and os.path.isabs(path), path
+    finally:
+        mymaps._bundled_browsers_dir = original
+
+
 class FakePage:
     """Editor page stand-in: the Picker dialog sticks open after the first upload."""
 
@@ -136,6 +150,7 @@ def test_revert_before_the_map_exists_does_not_reload():
 if __name__ == "__main__":
     test_map_name_from_tab()
     test_title_click_targets()
+    test_browsers_path_prefers_the_bundled_browser()
     test_import_retries_past_a_stuck_dialog()
     test_import_recovers_from_a_reverted_action()
     test_revert_before_the_map_exists_does_not_reload()

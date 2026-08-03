@@ -1,7 +1,7 @@
 # Building the macOS app + installer
 
 Mac counterpart of `build_exe.bat` / `build_installer.bat`. Produces
-`TripMapMaker.app` and a drag-to-install `TripMapMaker.dmg`.
+`My Maps Generator.app` and a drag-to-install `TripMapMaker.dmg`.
 
 > **Must be built on a Mac.** PyInstaller is not a cross-compiler — you can't
 > build the macOS app from Windows. The `.app` matches the CPU of the build
@@ -13,13 +13,17 @@ Mac counterpart of `build_exe.bat` / `build_installer.bat`. Produces
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt streamlit-desktop-app
-playwright install chromium      # optional — publishing can drive installed Google Chrome instead
 ```
+
+`build_app.sh` installs Chromium itself (with `PLAYWRIGHT_BROWSERS_PATH=0`, so it
+lands inside the `playwright` package and gets bundled into the `.app`, ~150MB).
+Users then need no browser of their own — don't run a plain `playwright install`
+first, that one goes to `~/Library/Caches/ms-playwright` and is *not* packaged.
 
 ## Build
 
 ```bash
-./build_app.sh      # -> dist/TripMapMaker.app
+./build_app.sh      # -> dist/My Maps Generator.app
 ./build_dmg.sh      # -> TripMapMaker.dmg
 ```
 
@@ -34,7 +38,7 @@ The app isn't code-signed/notarized, so Gatekeeper blocks the first launch.
 Either **right-click → Open** once, or run:
 
 ```bash
-xattr -dr com.apple.quarantine /Applications/TripMapMaker.app
+xattr -dr com.apple.quarantine "/Applications/My Maps Generator.app"
 ```
 
 To ship without that step you'd need an Apple Developer ID cert to `codesign`

@@ -38,6 +38,7 @@ pyinstaller --noconfirm --windowed --name "My Maps Generator" \
   --collect-all streamlit \
   --copy-metadata streamlit \
   --collect-all playwright \
+  --collect-all webview \
   --collect-all google \
   --collect-all googleapiclient \
   --collect-all google_auth_oauthlib \

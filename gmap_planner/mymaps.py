@@ -36,17 +36,18 @@ def _bundled_browsers_dir() -> str:
     )
 
 
+def _browsers_path() -> str:
+    """PLAYWRIGHT_BROWSERS_PATH for a packaged app: "0" (= inside the playwright
+    package) when the build bundled a browser, else a writable per-user dir."""
+    return "0" if os.path.isdir(_bundled_browsers_dir()) else data_path("ms-playwright")
+
+
 # A packaged app has no per-user ms-playwright cache (~/Library/Caches on macOS)
 # and no `python -m playwright` to fill one, so Playwright finds no browser at all
 # — that's why publishing worked on a dev machine but not from the .app/.exe.
-# Point it at the browser bundled in the app ("0" = look inside the playwright
-# package); if the build didn't bundle one, use a writable per-user dir that
-# ensure_chromium() downloads into. setdefault: a dev-set custom path still wins.
+# setdefault: a dev-set custom path still wins.
 if getattr(sys, "frozen", False):
-    os.environ.setdefault(
-        "PLAYWRIGHT_BROWSERS_PATH",
-        "0" if os.path.isdir(_bundled_browsers_dir()) else data_path("ms-playwright"),
-    )
+    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", _browsers_path())
 
 # A My Maps edit URL carries the map id as `?mid=...` / `&mid=...`; that id is the
 # Drive file id we hand to the sharing step.
