@@ -4,7 +4,7 @@
 
 #define AppName "My Maps Generator"
 #define AppExe "My Maps Generator.exe"
-#define AppVersion "1.1.4"
+#define AppVersion "1.1.5"
 #define AppPublisher "My Maps Generator"
 
 [Setup]
