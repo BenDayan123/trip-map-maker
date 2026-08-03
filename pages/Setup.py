@@ -102,7 +102,8 @@ def render_setup_status() -> None:
         (bool(get_secret("GEO_API_KEY")), "Geocoding API key",
          "Set it under Settings (API keys) above"),
         (_dir_has_files(PW_PROFILE_DIR), "Signed in to Google (My Maps)",
-         "Run login.bat once (only needed to publish maps)"),
+         "Click 🔐 Log in to Google under 'Publish to My Maps' (only needed to "
+         "publish maps)"),
         (os.path.exists(DRIVE_CREDENTIALS_FILE), "Drive credentials.json",
          "Only needed to share maps — upload it under 'Publish to My Maps'"),
         (os.path.exists(DRIVE_TOKEN_FILE), "Drive access authorized",

@@ -6,7 +6,8 @@
 # resulting .app matches the arch of the machine that builds it.
 #
 # One-time:  pip install -r requirements.txt streamlit-desktop-app
-#            playwright install chromium      # only if you don't drive installed Chrome
+#            (this script installs Chromium into the app bundle itself, so users
+#             need no separately-installed browser — see below)
 # Then:      ./build_app.sh                   # -> dist/My Maps Generator.app
 #            ./build_dmg.sh                    # -> TripMapMaker.dmg (drag-to-install)
 set -euo pipefail
@@ -18,6 +19,14 @@ if [ -d ".venv/bin" ]; then
 fi
 
 python -c "import PyInstaller" 2>/dev/null || python -m pip install pyinstaller
+
+# Install Chromium *inside* the playwright package (PLAYWRIGHT_BROWSERS_PATH=0)
+# so `--collect-all playwright` bundles the browser into the .app. Without this
+# the browser lands in ~/Library/Caches/ms-playwright and is NOT packaged, so a
+# user without Google Chrome installed has no browser to drive. The runtime sets
+# the same env var (gmap_planner/mymaps.py) to find it. ~150MB, worth it: no
+# dependency on the user having Chrome.
+PLAYWRIGHT_BROWSERS_PATH=0 python -m playwright install chromium
 
 # Freeze desktop.py (our launcher — bounded shutdown so the window actually
 # quits) instead of the streamlit-desktop-app wrapper, whose join()-with-no-
@@ -60,16 +69,34 @@ if [ -d "$API_PROTO" ]; then
   find "$API_PROTO" -type d -name '__pycache__' -exec rm -rf {} +
 fi
 
+# PyInstaller copies collected data files without their exec bit, so Playwright's
+# node driver and the bundled Chromium land non-executable ("Permission denied" /
+# "Executable doesn't exist" at publish time). Restore it across the driver tree
+# (chmod +x on the .js/.json in there is harmless). Must run BEFORE codesign —
+# changing a file afterwards invalidates the signature.
+APP="dist/My Maps Generator.app"
+echo "Restoring exec bits on the bundled Playwright driver/browser..."
+find "$APP" -type d -name driver -path '*playwright*' -exec chmod -R a+x {} +
+if [ -z "$(find "$APP" -type d -name '.local-browsers' -print -quit)" ]; then
+  echo "WARNING: Chromium was not bundled into the app — it will be downloaded on"
+  echo "         first publish instead (needs internet). Check the playwright"
+  echo "         install step above."
+fi
+
 # Ad-hoc codesign so Gatekeeper doesn't reject the unsigned app as "damaged" on
 # Apple Silicon (no paid Developer ID — users still do a one-time Open Anyway,
 # see INSTALL_MACOS.md). Signing the whole bundle also covers a build made in an
 # Intel VM (native arch = x86_64), which then runs on Intel + Apple Silicon (via
 # Rosetta 2). Done here so both the CI workflow and a local/VM build get a signed
 # app from one place.
-APP="dist/My Maps Generator.app"
 echo "Ad-hoc codesigning $APP ..."
 codesign --force --deep --sign - "$APP"
-codesign --verify --deep --strict "$APP"
+# Top-level signature is what Gatekeeper checks — that one must pass. The deep
+# pass walks the nested Chromium.app too, which routinely trips --strict (its
+# framework layout doesn't survive PyInstaller's copy); warn, don't fail the build.
+codesign --verify --strict "$APP"
+codesign --verify --deep --strict "$APP" \
+  || echo "WARNING: deep verify failed (usually the bundled Chromium) — app signature itself is valid."
 
 echo
 echo "Done. App bundle: $APP  ($(lipo -archs "$APP/Contents/MacOS/My Maps Generator" 2>/dev/null || echo '?'))"

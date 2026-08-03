@@ -25,6 +25,28 @@ import time
 
 from .config import MYMAPS_HOME_URL, PW_PROFILE_DIR
 from .errors import PipelineError
+from .paths import data_path
+
+
+def _bundled_browsers_dir() -> str:
+    """Where a build-time ``PLAYWRIGHT_BROWSERS_PATH=0 playwright install`` puts the
+    browser inside the frozen app (see build_app.sh)."""
+    return os.path.join(
+        getattr(sys, "_MEIPASS", ""), "playwright", "driver", "package", ".local-browsers"
+    )
+
+
+# A packaged app has no per-user ms-playwright cache (~/Library/Caches on macOS)
+# and no `python -m playwright` to fill one, so Playwright finds no browser at all
+# — that's why publishing worked on a dev machine but not from the .app/.exe.
+# Point it at the browser bundled in the app ("0" = look inside the playwright
+# package); if the build didn't bundle one, use a writable per-user dir that
+# ensure_chromium() downloads into. setdefault: a dev-set custom path still wins.
+if getattr(sys, "frozen", False):
+    os.environ.setdefault(
+        "PLAYWRIGHT_BROWSERS_PATH",
+        "0" if os.path.isdir(_bundled_browsers_dir()) else data_path("ms-playwright"),
+    )
 
 # A My Maps edit URL carries the map id as `?mid=...` / `&mid=...`; that id is the
 # Drive file id we hand to the sharing step.
@@ -75,29 +97,33 @@ _chromium_ready = False
 def ensure_chromium() -> None:
     """Fetch Playwright's Chromium binary once per process if it's missing.
 
-    Streamlit Community Cloud installs pip deps but never runs `playwright install`,
-    so the browser binary is absent at runtime. This downloads it on demand (the OS
-    libraries it needs come from the repo's `packages.txt`). No-ops after the first
-    call and is cheap when the binary is already present.
+    Two environments need this: Streamlit Community Cloud (installs pip deps but
+    never runs `playwright install`) and a packaged app whose build didn't bundle
+    the browser. A frozen app has no `python -m playwright`, so Playwright's own
+    node driver CLI is run directly — that's what makes publishing work on a Mac
+    with no Chrome installed. No-ops when the browser ships inside the app.
     """
     global _chromium_ready
     if _chromium_ready:
         return
-    if getattr(sys, "frozen", False):
-        # Inside a packaged exe there's no `python -m playwright` to invoke; the app
-        # drives the installed Chrome/Edge channel instead (see _launch_persistent).
-        _chromium_ready = True
-        return
+    _chromium_ready = True  # one attempt per process, success or not
+    if os.environ.get("PLAYWRIGHT_BROWSERS_PATH") == "0":
+        return  # bundled in the app at build time — nothing to fetch
     try:
-        subprocess.run(
-            [sys.executable, "-m", "playwright", "install", "chromium"],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
+        if getattr(sys, "frozen", False):
+            from playwright._impl._driver import (
+                compute_driver_executable,
+                get_driver_env,
+            )
+
+            node, cli = compute_driver_executable()
+            cmd, env = [node, cli, "install", "chromium"], get_driver_env()
+        else:
+            cmd, env = [sys.executable, "-m", "playwright", "install", "chromium"], None
+        _log("checking Playwright's Chromium (first run may download it)…")
+        subprocess.run(cmd, check=True, capture_output=True, text=True, env=env)
     except Exception as e:  # best-effort — the launch step reports a clear error
         _log(f"'playwright install chromium' did not complete: {e}")
-    _chromium_ready = True
 
 
 # Hide the two signals Google uses to block sign-in ("This browser or app may not
@@ -132,6 +158,14 @@ def _launch_persistent(pw, profile_dir: str, headless: bool):
     # Every channel failed. The usual cause is a missing browser binary.
     msg = str(last_err) or repr(last_err)
     if "Executable doesn't exist" in msg or "playwright install" in msg:
+        if getattr(sys, "frozen", False):
+            # No terminal in a packaged app — ensure_chromium() already tried to
+            # fetch it, so this is a download/permissions problem, not setup.
+            raise MyMapsError(
+                "No browser available for My Maps. The app couldn't use its bundled "
+                "Chromium or download one — check the internet connection and try "
+                f"again.\n\nDetails: {msg}"
+            ) from last_err
         raise MyMapsError(
             "Playwright's Chromium isn't installed in this environment. Run:\n"
             "  playwright install chromium\n\n"
@@ -697,6 +731,7 @@ def login(profile_dir: str = PW_PROFILE_DIR, timeout_s: int = 300) -> None:
 
     The login is stored in the persistent profile, so later headless runs reuse it.
     """
+    ensure_chromium()
     sync_playwright = _import_playwright()
     print(
         "Opening Google My Maps. Sign in with your Google account in the browser "
@@ -759,6 +794,7 @@ def is_logged_in(profile_dir: str = PW_PROFILE_DIR) -> bool:
     any error (Playwright missing, no profile yet, ...).
     """
     try:
+        ensure_chromium()
         sync_playwright = _import_playwright()
     except MyMapsError:
         return False
