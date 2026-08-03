@@ -155,7 +155,7 @@ def _selfcheck() -> None:
     answers, then confirm _shutdown() actually stops it. No webview/browser."""
     proc, port = _spawn(dict(THEME))
     try:
-        _wait_for_server(port, timeout=40)
+        _wait_for_server(port)
         assert proc.is_alive(), "child died before serving"
     finally:
         _shutdown(proc)

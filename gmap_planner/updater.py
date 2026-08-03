@@ -16,6 +16,7 @@ missing internet connection can never break app startup.
 """
 
 import os
+import platform
 import subprocess
 import sys
 import tempfile
@@ -74,18 +75,30 @@ def _is_newer(latest: str, current: str) -> bool:
 
 
 def _platform_asset(assets: list[dict]) -> dict | None:
-    """Pick the release asset for this OS (Windows .exe / macOS .dmg)."""
+    """Pick the release asset for this OS *and CPU*.
+
+    A macOS release ships more than one .dmg (Intel-only and universal), so
+    taking the first match handed Apple Silicon whatever GitHub listed first —
+    often the Intel build. Match the CPU first, then fall back to any .dmg.
+    """
     if sys.platform.startswith("win"):
-        exts = (".exe",)
+        exts, prefer = (".exe",), ()
     elif sys.platform == "darwin":
         exts = (".dmg",)
+        # Rosetta reports x86_64, which is right: an Intel build is what runs.
+        prefer = (
+            ("universal", "arm64")
+            if platform.machine() == "arm64"
+            else ("intel", "x86_64")
+        )
     else:
         return None
-    for a in assets:
-        name = (a.get("name") or "").lower()
-        if name.endswith(exts):
-            return a
-    return None
+    matches = [a for a in assets if (a.get("name") or "").lower().endswith(exts)]
+    for token in prefer:
+        for a in matches:
+            if token in (a.get("name") or "").lower():
+                return a
+    return matches[0] if matches else None
 
 
 def check_for_update(repo: str = GITHUB_REPO, timeout: int = 8) -> UpdateInfo | None:

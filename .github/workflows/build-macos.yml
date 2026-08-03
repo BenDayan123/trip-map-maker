@@ -48,6 +48,19 @@ jobs:
           chmod +x build_app.sh
           ./build_app.sh # native arm64; ad-hoc signs (re-signed after merge)
 
+      # The two things that only break on macOS and only in the frozen app:
+      # the browser not making it into the bundle (publishing then needs the
+      # user to have Chrome), and the app not coming up / not shutting down.
+      - name: Check Chromium was bundled
+        run: |
+          BROWSERS="$(find "dist/My Maps Generator.app" -type d -name '.local-browsers' -print -quit)"
+          [ -n "$BROWSERS" ] || { echo "::error::Chromium was not bundled into the .app"; exit 1; }
+          echo "bundled: $BROWSERS"
+
+      - name: Smoke-test the .app (starts Streamlit, then shuts down)
+        timeout-minutes: 5
+        run: '"dist/My Maps Generator.app/Contents/MacOS/My Maps Generator" --selfcheck'
+
       - name: Tar the .app (preserve perms/symlinks for the merge job)
         run: tar -czpf "app-arm64.tar.gz" -C dist "My Maps Generator.app"
 
