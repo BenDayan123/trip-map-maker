@@ -19,12 +19,14 @@ Run from source with ``python run_desktop.py``; frozen into the .app by
 """
 from __future__ import annotations
 
+import atexit
 import multiprocessing
 import os
 import signal
 import socket
 import sys
 import time
+import traceback
 from typing import Dict, Optional
 
 TITLE = "My Maps Generator"
@@ -68,7 +70,10 @@ def _run_streamlit(script: str, port: int, options: Dict[str, str]) -> None:
     stcli.main()
 
 
-def _wait_for_server(port: int, timeout: float = 20.0) -> None:
+def _wait_for_server(port: int, timeout: float = 60.0) -> None:
+    """Block until the child's port answers. 60s because a frozen macOS app's
+    first launch unpacks + imports Streamlit from a cold Gatekeeper scan, which
+    can take far longer than a dev run (20s used to abort a healthy start)."""
     import urllib.error
     import urllib.request
 
@@ -120,6 +125,10 @@ def start(options: Optional[Dict[str, str]] = None, title: str = TITLE) -> None:
     """Launch Streamlit in a child process inside a pywebview window."""
     opts = {**THEME, **(options or {})}
     proc, port = _spawn(opts)
+    # On macOS pywebview terminates the Cocoa app on window close and may not
+    # return from webview.start(), so the finally below can be skipped — atexit
+    # still reaps the setsid-detached child. _shutdown() is idempotent.
+    atexit.register(_shutdown, proc)
     try:
         _wait_for_server(port)
         import webview
@@ -128,8 +137,17 @@ def start(options: Optional[Dict[str, str]] = None, title: str = TITLE) -> None:
             title, f"http://localhost:{port}", width=WIDTH, height=HEIGHT
         )
         webview.start()
+    except Exception:
+        traceback.print_exc()  # log it; the finally below still exits cleanly
     finally:
+        # Hard exit. On macOS the window closes but the process lingers —
+        # pywebview's Cocoa/objc runtime and multiprocessing's spawn machinery
+        # leave non-daemon threads behind, so returning normally hangs in the
+        # interpreter's join-all-threads shutdown: the app "can't be closed" and
+        # keeps bouncing in the Dock. The Streamlit child is reaped first, so
+        # there's nothing left to flush.
         _shutdown(proc)
+        os._exit(0)
 
 
 def _selfcheck() -> None:
