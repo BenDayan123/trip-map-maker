@@ -29,7 +29,33 @@ python -c "import PyInstaller" 2>/dev/null || python -m pip install pyinstaller
 # unsuitable") — which fails the whole build. Keep the browser away from
 # --collect-all and hand it to the bundle ourselves.
 BROWSERS_SRC="$PWD/build/ms-playwright"
-PLAYWRIGHT_BROWSERS_PATH="$BROWSERS_SRC" python -m playwright install chromium
+TARGET_ARCH="$(python -c 'import platform; print(platform.machine())')"
+HOST_ARCH="$(uname -m)"
+PW_RUN=""
+if [ "$TARGET_ARCH" != "$HOST_ARCH" ]; then
+  # Cross-build: the Intel app is built on an Apple Silicon runner under Rosetta.
+  # Playwright's node driver is a universal2 binary, so it runs NATIVELY (arm64)
+  # even though python is translated, detects the *host* arch, and downloads an
+  # arm64 browser into the Intel app — which cannot start on a real Intel Mac.
+  # Force the driver to run as the arch we're building for.
+  PW_RUN="arch -$TARGET_ARCH"
+fi
+# shellcheck disable=SC2086  # PW_RUN is a command prefix, must word-split
+PLAYWRIGHT_BROWSERS_PATH="$BROWSERS_SRC" $PW_RUN python -m playwright install chromium
+
+# ...and verify it worked, because the failure is invisible until an Intel user
+# tries to publish: the browser dir is named after the arch it was built for.
+case "$TARGET_ARCH" in
+  arm64) WANT_BROWSER="chrome-mac-arm64" ;;
+  x86_64) WANT_BROWSER="chrome-mac-x64" ;;
+  *) WANT_BROWSER="" ;;
+esac
+if [ -n "$WANT_BROWSER" ] && [ -z "$(find "$BROWSERS_SRC" -type d -name "$WANT_BROWSER" -print -quit)" ]; then
+  echo "Error: Playwright fetched the wrong browser arch for a $TARGET_ARCH build." >&2
+  echo "       Expected a '$WANT_BROWSER' directory under $BROWSERS_SRC, found:" >&2
+  find "$BROWSERS_SRC" -maxdepth 2 -type d -name 'chrome-mac*' >&2
+  exit 1
+fi
 
 # A leftover in-package install (an older build, or a manual
 # `PLAYWRIGHT_BROWSERS_PATH=0 playwright install`) would still be collected and
