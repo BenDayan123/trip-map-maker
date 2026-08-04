@@ -86,16 +86,19 @@ def _platform_asset(assets: list[dict]) -> dict | None:
     elif sys.platform == "darwin":
         exts = (".dmg",)
         # Rosetta reports x86_64, which is right: an Intel build is what runs.
-        # Both lists end with "universal" so a release that drops the per-arch
-        # .dmg still resolves, instead of falling through to the other arch.
         prefer = (
-            ("universal", "arm64")
+            ("arm64", "universal")
             if platform.machine() == "arm64"
             else ("intel", "x86_64", "universal")
         )
     else:
         return None
     matches = [a for a in assets if (a.get("name") or "").lower().endswith(exts)]
+    if sys.platform == "darwin" and platform.machine() != "arm64":
+        # Releases are Apple Silicon only, so the generic fallback below would
+        # hand an Intel Mac an arm64 .dmg that cannot run. Better to report no
+        # installer for this system (`has_asset` False) than to install a brick.
+        matches = [a for a in matches if "arm64" not in (a.get("name") or "").lower()]
     for token in prefer:
         for a in matches:
             if token in (a.get("name") or "").lower():

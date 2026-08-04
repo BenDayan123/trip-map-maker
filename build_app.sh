@@ -30,21 +30,13 @@ python -c "import PyInstaller" 2>/dev/null || python -m pip install pyinstaller
 # --collect-all and hand it to the bundle ourselves.
 BROWSERS_SRC="$PWD/build/ms-playwright"
 TARGET_ARCH="$(python -c 'import platform; print(platform.machine())')"
-HOST_ARCH="$(uname -m)"
-PW_RUN=""
-if [ "$TARGET_ARCH" != "$HOST_ARCH" ]; then
-  # Cross-build: the Intel app is built on an Apple Silicon runner under Rosetta.
-  # Playwright's node driver is a universal2 binary, so it runs NATIVELY (arm64)
-  # even though python is translated, detects the *host* arch, and downloads an
-  # arm64 browser into the Intel app — which cannot start on a real Intel Mac.
-  # Force the driver to run as the arch we're building for.
-  PW_RUN="arch -$TARGET_ARCH"
-fi
-# shellcheck disable=SC2086  # PW_RUN is a command prefix, must word-split
-PLAYWRIGHT_BROWSERS_PATH="$BROWSERS_SRC" $PW_RUN python -m playwright install chromium
+PLAYWRIGHT_BROWSERS_PATH="$BROWSERS_SRC" python -m playwright install chromium
 
-# ...and verify it worked, because the failure is invisible until an Intel user
-# tries to publish: the browser dir is named after the arch it was built for.
+# Playwright's node driver is a universal2 binary and downloads the browser for
+# the arch it happens to RUN as, not the one we're building for — that shipped an
+# arm64 browser inside an Intel app once, and nothing surfaces it until a user of
+# that arch tries to publish. The browser dir is named after its arch, so check.
+# (Only a cross-build can trip this; this build is native, see build-macos.yml.)
 case "$TARGET_ARCH" in
   arm64) WANT_BROWSER="chrome-mac-arm64" ;;
   x86_64) WANT_BROWSER="chrome-mac-x64" ;;

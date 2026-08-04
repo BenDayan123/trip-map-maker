@@ -68,9 +68,13 @@ A sidebar **⚙️ Setup status** expander (`render_setup_status`) shows what's 
 `GOOGLE_STORAGE_STATE`) remains in the repo but is unused in this local flow.
 
 **Also shipped as a macOS app** (`build_app.sh` → `My Maps Generator.app`, `build_dmg.sh`
-→ `.dmg`, both built in `.github/workflows/build-macos.yml`; `merge_universal.sh` lipos the
-arm64 + x86_64 builds into a universal one). What differs from Windows, all of it
-mac-only breakage that was fixed rather than theory:
+→ `TripMapMaker-macos-arm64.dmg`, both built in `.github/workflows/build-macos.yml`).
+**Apple Silicon only** — the admins run Apple Silicon, and the old Intel leg cross-built
+under Rosetta, doubling the build and the bundled browser while shipping an *arm64*
+browser inside the Intel app (Playwright's `universal2` node fetches for the arch it runs
+as, not the target). To bring Intel back, add a job on a real x86_64 runner; don't
+cross-build. What differs from Windows, all of it mac-only breakage that was fixed
+rather than theory:
 - **Browser**: a `.app` has no `~/Library/Caches/ms-playwright` and no `python -m
   playwright` to fill one, so publishing worked only where Chrome happened to be
   installed. `build_app.sh` fetches Chromium into `build/ms-playwright` and `cp -R`s it
@@ -101,15 +105,9 @@ mac-only breakage that was fixed rather than theory:
   thing that actually catches a broken nested signature is the Chromium launch above.
 - **pywebview**: `--collect-all webview` is required (its `webview/js/*.js` are runtime
   data files).
-- **Updater**: a release ships both an Intel and a universal `.dmg`, so
-  `updater._platform_asset` picks by CPU instead of taking the first `.dmg`.
-- **Universal merge**: the browser lives in a per-arch directory (`chrome-mac-arm64` /
-  `chrome-mac-x64`), so the two builds don't overlap — nothing to lipo, and the x86_64
-  tree is copied in whole by pass 2. That pass had to start copying **symlinks** as well
-  as files: the browser's framework is held together by `Versions/Current`, and a
-  files-only copy yields an Intel browser that can't launch. `merge_universal.sh` asserts
-  both arch trees are present and prints the merged app's size (the `.dmg` is what the
-  updater downloads).
+- **Updater**: `updater._platform_asset` picks the `.dmg` by CPU rather than taking the
+  first one — older releases still carry Intel/universal `.dmg`s. On an Intel Mac it
+  reports *no* installer rather than falling back to the arm64 build, which wouldn't run.
 
 ## Key design decisions
 

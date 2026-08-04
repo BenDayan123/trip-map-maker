@@ -5,8 +5,11 @@ Mac counterpart of `build_exe.bat` / `build_installer.bat`. Produces
 
 > **Must be built on a Mac.** PyInstaller is not a cross-compiler — you can't
 > build the macOS app from Windows. The `.app` matches the CPU of the build
-> machine (Apple Silicon `arm64` or Intel `x86_64`); build on each arch you want
-> to ship, or on Apple Silicon and let Rosetta cover Intel.
+> machine, and releases are **Apple Silicon only** (the admins run Apple
+> Silicon). To ship Intel again, build on a real Intel Mac — do not cross-build
+> under Rosetta: Playwright's `universal2` node driver fetches the browser for
+> the arch it runs as, so an Intel app built that way ships an arm64 browser
+> that can't start. `build_app.sh` fails the build if that happens.
 
 ## One-time setup
 

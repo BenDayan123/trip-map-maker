@@ -16,8 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from gmap_planner import updater
 
 ASSETS = [
-    {"name": "TripMapMaker-macos-intel.dmg"},
-    {"name": "TripMapMaker-macos-universal.dmg"},
+    {"name": "TripMapMaker-macos-arm64.dmg"},
     {"name": "TripMapMaker-Setup.exe"},
 ]
 
@@ -36,25 +35,27 @@ def pick(assets, plat, machine="arm64"):
     return (got or {}).get("name")
 
 
-def test_apple_silicon_gets_the_universal_dmg():
-    assert pick(ASSETS, "darwin", "arm64") == "TripMapMaker-macos-universal.dmg"
+def test_apple_silicon_gets_the_arm64_dmg():
+    assert pick(ASSETS, "darwin", "arm64") == "TripMapMaker-macos-arm64.dmg"
 
 
-def test_intel_mac_gets_the_intel_dmg():
-    assert pick(ASSETS, "darwin", "x86_64") == "TripMapMaker-macos-intel.dmg"
+def test_intel_mac_is_offered_nothing_rather_than_an_arm64_dmg():
+    # Releases are Apple Silicon only; an arm64 .dmg cannot run on Intel, so the
+    # UI must say "no installer for your system", not install a brick.
+    assert pick(ASSETS, "darwin", "x86_64") is None
 
 
-def test_falls_back_to_any_dmg():
+def test_older_releases_with_intel_and_universal_still_resolve():
+    old = [{"name": "TripMapMaker-macos-intel.dmg"},
+           {"name": "TripMapMaker-macos-universal.dmg"}]
+    assert pick(old, "darwin", "x86_64") == "TripMapMaker-macos-intel.dmg"
+    assert pick(old, "darwin", "arm64") == "TripMapMaker-macos-universal.dmg"
+
+
+def test_falls_back_to_an_arch_less_dmg():
     only = [{"name": "TripMapMaker.dmg"}]
     assert pick(only, "darwin", "arm64") == "TripMapMaker.dmg"
     assert pick(only, "darwin", "x86_64") == "TripMapMaker.dmg"
-
-
-def test_intel_takes_universal_over_an_arm64_only_build():
-    # A release without an Intel .dmg must not hand Intel the arm64 one.
-    assets = [{"name": "TripMapMaker-macos-arm64.dmg"},
-              {"name": "TripMapMaker-macos-universal.dmg"}]
-    assert pick(assets, "darwin", "x86_64") == "TripMapMaker-macos-universal.dmg"
 
 
 def test_windows_still_gets_the_exe():
@@ -67,10 +68,10 @@ def test_no_asset_for_this_os():
 
 
 if __name__ == "__main__":
-    test_apple_silicon_gets_the_universal_dmg()
-    test_intel_mac_gets_the_intel_dmg()
-    test_falls_back_to_any_dmg()
-    test_intel_takes_universal_over_an_arm64_only_build()
+    test_apple_silicon_gets_the_arm64_dmg()
+    test_intel_mac_is_offered_nothing_rather_than_an_arm64_dmg()
+    test_older_releases_with_intel_and_universal_still_resolve()
+    test_falls_back_to_an_arch_less_dmg()
     test_windows_still_gets_the_exe()
     test_no_asset_for_this_os()
     print("ok")
