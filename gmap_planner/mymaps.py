@@ -29,17 +29,20 @@ from .paths import data_path
 
 
 def _bundled_browsers_dir() -> str:
-    """Where a build-time ``PLAYWRIGHT_BROWSERS_PATH=0 playwright install`` puts the
-    browser inside the frozen app (see build_app.sh)."""
-    return os.path.join(
-        getattr(sys, "_MEIPASS", ""), "playwright", "driver", "package", ".local-browsers"
-    )
+    """Where build_app.sh copies the browser inside the frozen app.
+
+    Next to the collected packages (``sys._MEIPASS``) rather than *inside* the
+    playwright package: PyInstaller re-signs every binary it collects, and codesign
+    rejects the main executable of a nested ``.app``, which fails the whole build.
+    """
+    return os.path.join(getattr(sys, "_MEIPASS", ""), "ms-playwright")
 
 
 def _browsers_path() -> str:
-    """PLAYWRIGHT_BROWSERS_PATH for a packaged app: "0" (= inside the playwright
-    package) when the build bundled a browser, else a writable per-user dir."""
-    return "0" if os.path.isdir(_bundled_browsers_dir()) else data_path("ms-playwright")
+    """PLAYWRIGHT_BROWSERS_PATH for a packaged app: the browser shipped in the
+    bundle when there is one, else a writable per-user dir to download into."""
+    bundled = _bundled_browsers_dir()
+    return bundled if os.path.isdir(bundled) else data_path("ms-playwright")
 
 
 # A packaged app has no per-user ms-playwright cache (~/Library/Caches on macOS)
@@ -108,8 +111,8 @@ def ensure_chromium() -> None:
     if _chromium_ready:
         return
     _chromium_ready = True  # one attempt per process, success or not
-    if os.environ.get("PLAYWRIGHT_BROWSERS_PATH") == "0":
-        return  # bundled in the app at build time — nothing to fetch
+    if getattr(sys, "frozen", False) and os.path.isdir(_bundled_browsers_dir()):
+        return  # shipped in the app bundle — nothing to fetch
     if getattr(sys, "frozen", False) and sys.platform.startswith("win"):
         # The Windows installer doesn't bundle a browser and doesn't need to:
         # Edge ships with Windows, so _launch_persistent always finds a channel.

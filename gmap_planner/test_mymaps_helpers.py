@@ -43,15 +43,17 @@ def test_title_click_targets():
 
 
 def test_browsers_path_prefers_the_bundled_browser():
-    # The packaged app must never fall back to the per-user ms-playwright cache
-    # while it ships a browser — "0" is what points Playwright inside the bundle.
+    # The packaged app must use the browser it ships and never re-download one;
+    # with no bundled browser it needs a WRITABLE dir, not the read-only bundle.
     original = mymaps._bundled_browsers_dir
+    bundled = os.path.dirname(__file__)  # stand-in for a dir that exists
     try:
-        mymaps._bundled_browsers_dir = lambda: os.path.dirname(__file__)  # exists
-        assert mymaps._browsers_path() == "0"
-        mymaps._bundled_browsers_dir = lambda: os.path.join(os.path.dirname(__file__), "nope")
+        mymaps._bundled_browsers_dir = lambda: bundled
+        assert mymaps._browsers_path() == bundled
+        mymaps._bundled_browsers_dir = lambda: os.path.join(bundled, "nope")
         path = mymaps._browsers_path()
-        assert path.endswith("ms-playwright") and os.path.isabs(path), path
+        assert path != bundled and path.endswith("ms-playwright"), path
+        assert os.path.isabs(path), path
     finally:
         mymaps._bundled_browsers_dir = original
 

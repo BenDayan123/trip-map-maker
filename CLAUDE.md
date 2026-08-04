@@ -73,16 +73,21 @@ arm64 + x86_64 builds into a universal one). What differs from Windows, all of i
 mac-only breakage that was fixed rather than theory:
 - **Browser**: a `.app` has no `~/Library/Caches/ms-playwright` and no `python -m
   playwright` to fill one, so publishing worked only where Chrome happened to be
-  installed. `build_app.sh` runs `PLAYWRIGHT_BROWSERS_PATH=0 playwright install chromium`
-  *before* PyInstaller so `--collect-all playwright` bundles the browser (~150MB), then
-  restores the exec bits PyInstaller drops on the node driver + browser binaries.
-  `check_bundled_chromium` then **launches** that browser headless and fails the build if
-  it doesn't run — a directory-exists check would pass for a browser PyInstaller mangled,
-  left non-executable, or left with an invalid nested signature (which Apple Silicon
-  kills on sight). It also asserts the browser sits exactly where `_browsers_path()`
-  looks. `ensure_chromium()` downloads as a runtime fallback. The **Windows** installer
-  bundles no browser on purpose (Edge ships with Windows), so `ensure_chromium()` returns
-  early when frozen there instead of downloading 150MB it would never use.
+  installed. `build_app.sh` fetches Chromium into `build/ms-playwright` and `cp -R`s it
+  into the bundle **after** PyInstaller (~150MB), next to the collected packages — i.e.
+  `sys._MEIPASS/ms-playwright`, which is what `_bundled_browsers_dir()` resolves.
+  It must NOT go through `--collect-all playwright`: PyInstaller re-signs every collected
+  binary individually and `codesign` rejects the main executable of a nested `.app`
+  (*"bundle format unrecognized, invalid, or unsuitable"*), which fails the build — that
+  is exactly how the v1.1.5 tag build died. The script then **launches** the bundled
+  browser headless and fails if it doesn't run; a directory-exists check would pass for a
+  browser that is mangled, non-executable, or carries an invalid nested signature (which
+  Apple Silicon kills on sight). `ensure_chromium()` downloads as a runtime fallback.
+  The **Windows** installer bundles no browser on purpose (Edge ships with Windows), so
+  `ensure_chromium()` returns early when frozen there instead of downloading 150MB it
+  would never use. Note Playwright's directory name is not stable across versions
+  (`chrome-mac/Chromium.app` → `chrome-mac-arm64/Google Chrome for Testing.app`), so the
+  build scripts match on the `chrome-mac*` dir, never on the browser's name.
 - **Shutdown**: pywebview's Cocoa runtime and multiprocessing's spawn machinery leave
   non-daemon threads alive, so returning from `desktop.start()` hung the process with the
   window already gone ("can't quit the app"). It reaps the Streamlit child and then
@@ -98,10 +103,13 @@ mac-only breakage that was fixed rather than theory:
   data files).
 - **Updater**: a release ships both an Intel and a universal `.dmg`, so
   `updater._platform_asset` picks by CPU instead of taking the first `.dmg`.
-- **Universal merge**: `merge_universal.sh` now also lipos two full Chromium trees, and
-  its per-file fallback is "keep the arm64 copy" — which would hand an Intel user a
-  browser that can't start. It asserts the bundled Chromium came out fat and prints the
-  merged app's size (the `.dmg` is what the updater downloads).
+- **Universal merge**: the browser lives in a per-arch directory (`chrome-mac-arm64` /
+  `chrome-mac-x64`), so the two builds don't overlap — nothing to lipo, and the x86_64
+  tree is copied in whole by pass 2. That pass had to start copying **symlinks** as well
+  as files: the browser's framework is held together by `Versions/Current`, and a
+  files-only copy yields an Intel browser that can't launch. `merge_universal.sh` asserts
+  both arch trees are present and prints the merged app's size (the `.dmg` is what the
+  updater downloads).
 
 ## Key design decisions
 

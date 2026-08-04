@@ -18,15 +18,19 @@ pip install -r requirements.txt
 (No `streamlit-desktop-app` here — unlike the Windows build, `build_app.sh`
 freezes our own `desktop.py` launcher and never imports it.)
 
-`build_app.sh` installs Chromium itself (with `PLAYWRIGHT_BROWSERS_PATH=0`, so it
-lands inside the `playwright` package and gets bundled into the `.app`, ~150MB).
-Users then need no browser of their own — don't run a plain `playwright install`
-first, that one goes to `~/Library/Caches/ms-playwright` and is *not* packaged.
-The build then launches the bundled Chromium headless and **fails** if it doesn't
-run, so a mangled copy, a missing exec bit, or a bad ad-hoc signature can't ship.
-(Note `PLAYWRIGHT_BROWSERS_PATH=0` installs into your `site-packages`, and
-`--collect-all playwright` bundles whatever browsers are in there — if you ever
-ran it without the `chromium` argument you'll be shipping firefox and webkit too.)
+`build_app.sh` fetches Chromium itself into `build/ms-playwright` and copies it
+into the `.app` **after** PyInstaller runs (~150MB), so users need no browser of
+their own. It then launches that browser headless and **fails the build** if it
+doesn't run — a missing exec bit, a wrong arch, or a bad ad-hoc signature can't
+ship silently.
+
+The copy happens after the freeze on purpose: PyInstaller re-signs every binary
+it collects, and `codesign` rejects the main executable of a nested `.app`
+("bundle format unrecognized, invalid, or unsuitable"), which fails the whole
+build. So the browser must stay out of `--collect-all playwright`. If you ever
+ran `PLAYWRIGHT_BROWSERS_PATH=0 playwright install`, browsers are sitting inside
+your `playwright` package and will be collected — the build stops and tells you
+which directory to delete.
 
 ## Build
 

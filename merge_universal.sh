@@ -59,31 +59,47 @@ while IFS= read -r -d '' x; do
     cp -R "$x" "$out"
     added=$((added + 1))
   fi
-done < <(find "$X86_APP" -type f -print0)
+  # -type l as well as -type f: the x86_64-only tree includes the bundled
+  # browser, whose framework is held together by symlinks (Versions/Current).
+  # Copying only regular files leaves an Intel browser that cannot launch.
+done < <(find "$X86_APP" \( -type f -o -type l \) -print0)
 echo "  added $added files"
 
 echo "Ad-hoc codesigning the universal app..."
 codesign --remove-signature "$OUT_APP" 2>/dev/null || true
 codesign --force --deep --sign - "$OUT_APP"
-# Top-level must pass; the deep walk hits the bundled Chromium.app, which trips
-# --strict after PyInstaller's copy + lipo. Warn instead of failing the build.
+# Top-level must pass; the deep walk hits the two bundled browser .apps, which
+# can trip --strict after the merge. Warn instead of failing the build.
 codesign --verify --strict "$OUT_APP"
 codesign --verify --deep --strict "$OUT_APP" \
   || echo "WARNING: deep verify failed (usually the bundled Chromium) — app signature itself is valid."
 
-# The bundled Chromium has to be fat too. Pass 1 leaves the arm64 copy in place
-# when lipo fails, which would ship an Intel user a browser that cannot start —
-# silently, since nothing else touches it until the first publish.
-CHROME="$(find "$OUT_APP" -path '*chrome-mac*/Chromium.app/Contents/MacOS/Chromium' -print -quit)"
-if [ -z "$CHROME" ]; then
-  echo "Error: no bundled Chromium in the merged app." >&2
-  exit 1
-fi
-CHROME_ARCHS="$(lipo -archs "$CHROME" 2>/dev/null || echo '?')"
-case "$CHROME_ARCHS" in
-  *x86_64*arm64* | *arm64*x86_64*) ;;
-  *) echo "Error: bundled Chromium is not universal ($CHROME_ARCHS)." >&2; exit 1 ;;
-esac
+# The bundled browser has to run on both arches. Playwright ships it in a
+# per-arch directory (chrome-mac-arm64 / chrome-mac-x64), so the two builds do
+# NOT overlap: pass 1 has nothing to lipo and pass 2 copies the x86_64 tree in
+# whole. That's what we want — each arch keeps its own browser — but it has to be
+# checked, because "arm64 tree only" fails silently until an Intel user publishes.
+# (`_browsers_path()` points Playwright at ms-playwright; it picks the dir matching
+# the process arch itself.)
+browser_binary() {
+  local app
+  app="$(find "$1" -type d -name '*.app' -path '*chrome-mac*' -print 2>/dev/null | head -1)"
+  [ -n "$app" ] && find "$app/Contents/MacOS" -maxdepth 1 -type f -print -quit
+}
+
+for arch_dir in arm64 x64; do
+  tree="$(find "$OUT_APP" -type d -name "chrome-mac*$arch_dir" -print -quit)"
+  if [ -z "$tree" ]; then
+    echo "Error: merged app has no chrome-mac-$arch_dir browser." >&2
+    exit 1
+  fi
+  bin="$(browser_binary "$tree")"
+  if [ -z "$bin" ]; then
+    echo "Error: no browser executable under $tree." >&2
+    exit 1
+  fi
+  echo "  browser ($arch_dir): $(lipo -archs "$bin" 2>/dev/null || echo '?')"
+done
 
 BIN="$OUT_APP/Contents/MacOS/My Maps Generator"
 echo
